@@ -74,15 +74,7 @@ columns = [
     'Undefined atom stereocenter count solvent'
 ]
 
-_CHNO = namedtuple('_CHNO', ['C', 'H', 'N', 'O'])
-class CHNO(_CHNO):
-    def __str__(self):
-        return chno_to_string(self)
-    
-    def __repr__(self):
-        return str(self)
-
-
+CHNO = namedtuple('CHNO', ['C', 'H', 'N', 'O'])
 water = CHNO(0, 2, 0, 1)
 
 def chno_to_string(chno):
@@ -118,7 +110,7 @@ class Compound:
 
     def __str__(self):
         """Format the compound as a string based on chno"""
-        return f"{self.chno}"
+        return f"{chno_to_string(self.chno)}"
     
     def __repr__(self):
         return str(self)
@@ -126,6 +118,7 @@ class Compound:
 def compound_info(compound):
     """Create a tooltip to differentiate isomers"""
     keys = [
+        'molecular_weight_gpm',
         'complexity',
         'hydrogen_bond_donor_count',
         'rotatable_bond_count',
@@ -280,3 +273,14 @@ def plot_temperature_vs_solubility(experiments):
     fig.update_yaxes(title_text="Solubility", row=2, col=1)
 
     fig.show()
+
+def main():
+    df = load_data()
+    experiments = get_experiments(df)
+    compounds = get_all_compounds(experiments)
+    isomers = get_all_structural_isomers(experiments)
+    differing_properties_across_isomers(isomers)
+    plot_temperature_vs_solubility(experiments)
+
+if __name__ == '__main__':
+    main()

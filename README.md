@@ -6,9 +6,7 @@ Data mining to predict amine solubility
 * replace commas in numbers with periods
 * some issues with "sec-Butylethylamine (C16H15N)". Chemical formula is actually C6H15N. Reports multiple molecular weights, 73.14 and 101.9. 
 
-
-
-Feature Engineering Thoughts:
+## Feature Engineering Thoughts:
 ultimately the question we'd like to answer is:
     - given a temperature and chemical structure, what is the solubility in water (x)
 
