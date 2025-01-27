@@ -1,6 +1,38 @@
-from dataclasses import dataclass
+"""
+1970 temperature / solubility pairs
+118 solute/solvent experiments
+104 with > 1 data points
+14 with 1 data point
+1 h2o
+23 structural isomers
+62 amines. Unique property values:
+  = shared across isomers
+  * differing across isomers
+
+  = C: 11
+  = H: 13
+  = N: 2
+  = O: 1
+  = molecular_weight_gpm: 20
+  = exact_mass_da: 20
+  = monoisotopic_mass_da: 20
+  = heavy_atom_count: 11
+  = hydrogen_bond_acceptor_count: 2
+  * xlogp3_aa: 29
+  * hydrogen_bond_donor_count: 2
+  * rotatable_bond_count: 12
+  * topological_polar_surface_area_angstroms: 5
+  * complexity: 55
+  * undefined_atom_stereocenter_count: 3
+
+Samples to features:
+    1986 : 120
+"""
+from dataclasses import dataclass, fields
 import pandas as pd
 from collections import namedtuple, defaultdict
+import plotly
+from plotly.subplots import make_subplots
 
 columns = [
     'Solubility of:',
@@ -42,18 +74,27 @@ columns = [
     'Undefined atom stereocenter count solvent'
 ]
 
-CHNO = namedtuple('CHNO', ['C', 'H', 'N', 'O'])
+_CHNO = namedtuple('_CHNO', ['C', 'H', 'N', 'O'])
+class CHNO(_CHNO):
+    def __str__(self):
+        return chno_to_string(self)
+    
+    def __repr__(self):
+        return str(self)
+
+
+water = CHNO(0, 2, 0, 1)
 
 def chno_to_string(chno):
     parts = []
     if chno.C > 0:
-        parts.append(f"C{chno.C}")
+        parts.append(f"C{chno.C}" if chno.C > 1 else "C")
     if chno.H > 0:
-        parts.append(f"H{chno.H}")
+        parts.append(f"H{chno.H}" if chno.H > 1 else "H")
     if chno.N > 0:
-        parts.append(f"N{chno.N}")
+        parts.append(f"N{chno.N}" if chno.N > 1 else "N")
     if chno.O > 0:
-        parts.append(f"O{chno.O}")
+        parts.append(f"O{chno.O}" if chno.O > 1 else "O")
     return ''.join(parts)
 
 Combination = namedtuple('Combination', ['solute', 'solvent'])
@@ -77,10 +118,25 @@ class Compound:
 
     def __str__(self):
         """Format the compound as a string based on chno"""
-        return f"Compound({chno_to_string(self.chno)})"
+        return f"{self.chno}"
     
     def __repr__(self):
         return str(self)
+
+def compound_info(compound):
+    """Create a tooltip to differentiate isomers"""
+    keys = [
+        'complexity',
+        'hydrogen_bond_donor_count',
+        'rotatable_bond_count',
+        'topological_polar_surface_area_angstroms',
+        'undefined_atom_stereocenter_count',
+        'xlogp3_aa'
+    ]
+    as_dict = {key: getattr(compound, key) for key in keys}
+    text = str(compound.chno) + '<br />' + '<br />'.join([f"{key}: {value}" for key, value in as_dict.items()])
+    return text
+
 
 def row_to_solvent(row):
     solvent = Compound(
@@ -125,6 +181,13 @@ def strip_repeated_value_cols(df):
     """ 
     return df.loc[:, (df != df.iloc[0]).any()]
 
+def strip_bad_rows(df):
+    bad_solute = 'sec-Butylethylamine (C16H15N)'
+    df = df[df['Solubility of:'] != bad_solute]
+    df = df[df['In:'] != bad_solute]
+
+    return df
+
 def fix_commas(x):
     if isinstance(x, str) and ',' in x:
         return float(str(x).replace(',', '.'))
@@ -139,6 +202,7 @@ def load_data():
     })
 
     df = strip_repeated_value_cols(df)
+    df = strip_bad_rows(df)
 
     return df
 
@@ -153,3 +217,66 @@ def get_experiments(df):
         experiments[combination].append(TempSolubility(temperature, solubility))
 
     return experiments
+
+def get_all_compounds(experiments):
+    compounds = set()
+    for combination in experiments.keys():
+        compounds.add(combination.solute)
+        compounds.add(combination.solvent)
+    return compounds
+
+def get_all_structural_isomers(experiments):
+    compounds = get_all_compounds(experiments)
+    isomers = defaultdict(list)
+    for compound in compounds:
+        isomers[compound.chno].append(compound)
+
+    return isomers
+
+def differing_properties_across_isomers(isomers):
+    """For each isomer, print out fields which differ"""
+    differing_properties = set()
+    for chno, compounds in isomers.items():
+        print(f"CHNO: {chno}")
+        for field in fields(Compound):
+            values = set(getattr(compound, field.name) for compound in compounds)
+            if len(values) > 1:
+                print(f"\tProperty {field.name} differs: {values}")
+                differing_properties.add(field.name)
+
+    return differing_properties
+
+
+def plot_temperature_vs_solubility(experiments):
+    fig = make_subplots(rows=2, cols=1, subplot_titles=("Amines in Water", "Water in Amines"), shared_xaxes=True)
+
+    for combination, points in experiments.items():
+        solute = combination.solute
+        solvent = combination.solvent
+
+        if solvent.chno == water:
+            trace = plotly.graph_objs.Scatter(
+                x=[point.temperature for point in points],
+                y=[point.solubility for point in points],
+                mode='markers',
+                name=f"{solute}",
+                text=[compound_info(solute) for _ in points],
+                hoverinfo='text+x+y'
+            )
+            fig.add_trace(trace, row=1, col=1)
+        elif solute.chno == water:
+            trace = plotly.graph_objs.Scatter(
+                x=[point.temperature for point in points],
+                y=[point.solubility for point in points],
+                mode='markers',
+                name=f"{solvent}",
+                text=[compound_info(solvent) for _ in points],
+                hoverinfo='text+x+y'
+            )
+            fig.add_trace(trace, row=2, col=1)
+
+    fig.update_xaxes(title_text="Temperature (K)", row=2, col=1)
+    fig.update_yaxes(title_text="Solubility", row=1, col=1)
+    fig.update_yaxes(title_text="Solubility", row=2, col=1)
+
+    fig.show()
