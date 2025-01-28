@@ -1,6 +1,6 @@
 ## Amine Solubility
 
-Data mining to predict amine solubility
+Data mining to predict amine solubility...
 
 ### Data Cleaning Steps
 * Discarding columns which are the same across all experiments
