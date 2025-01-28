@@ -110,7 +110,7 @@ class Compound:
 
     def __str__(self):
         """Format the compound as a string based on chno"""
-        return f"{chno_to_string(self.chno)}"
+        return f"Compound({chno_to_string(self.chno)})"
     
     def __repr__(self):
         return str(self)
@@ -242,6 +242,17 @@ def differing_properties_across_isomers(isomers):
 
 def plot_temperature_vs_solubility(experiments):
     fig = make_subplots(rows=2, cols=1, subplot_titles=("Amines in Water", "Water in Amines"), shared_xaxes=True)
+    isomers = get_all_structural_isomers(experiments)
+
+    # Generate a color dict so each isomer has a consistent color
+    colorscale = list(reversed(plotly.colors.sequential.Turbo))
+    colors = {}
+    offset = 0
+    for compounds in isomers.values():
+        for i, compound in enumerate(compounds):
+            offset += 1
+            if compound not in colors:
+                colors[compound] = colorscale[(offset + i) % len(colorscale)]
 
     for combination, points in experiments.items():
         solute = combination.solute
@@ -252,6 +263,9 @@ def plot_temperature_vs_solubility(experiments):
                 x=[point.temperature for point in points],
                 y=[point.solubility for point in points],
                 mode='markers',
+                marker=dict(
+                    color=colors[solute]
+                ),
                 name=f"{solute}",
                 text=[compound_info(solute) for _ in points],
                 hoverinfo='text+x+y'
@@ -262,6 +276,9 @@ def plot_temperature_vs_solubility(experiments):
                 x=[point.temperature for point in points],
                 y=[point.solubility for point in points],
                 mode='markers',
+                marker=dict(
+                    color=colors[solvent]
+                ),
                 name=f"{solvent}",
                 text=[compound_info(solvent) for _ in points],
                 hoverinfo='text+x+y'
