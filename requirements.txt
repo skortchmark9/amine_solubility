@@ -2,3 +2,6 @@ pandas
 ipython
 plotly
 openpyxl
+scikit-learn
+xgboost  # requires brew install libomp
+matplotlib
