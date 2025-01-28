@@ -5,3 +5,4 @@ openpyxl
 scikit-learn
 xgboost  # requires brew install libomp
 matplotlib
+seaborn

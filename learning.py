@@ -6,7 +6,37 @@ import matplotlib.pyplot as plt
 
 from amine_solubility import load_data
 
-# Load the data
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+selected_features = [
+    'T [K]',
+    'C in solute',
+    'H in solute',
+    'N in solute',
+    'O in solute',
+    'Molecular weight solute [g/mol]',
+    'XLogP3-AA solute',
+    'Hydrogen bond donor count solute',
+    'Hydrogen bond acceptor count solute',
+    'Rotatable bond count solute',
+    'Topological polar surface area solute [Å²]',
+    'Complexity solute',
+    'x' # solubility
+]
+
+
+def pearson_correlation_coefficient():
+    df = load_data(text=False)
+    df = df[selected_features].dropna()
+    corr_matrix = df.corr()
+
+    plt.figure(figsize=(12, 8))
+    sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f")
+    plt.title("Feature Correlation Matrix")
+    plt.show()
+
+
 def select_features():
     df = load_data()
     
@@ -14,23 +44,9 @@ def select_features():
     df = df[df['In:'] == 'Water']
     
     # Filter the relevant features
-    features = [
-        'T [K]',
-        'C in solute',
-        'H in solute',
-        'N in solute',
-        'O in solute',
-        'Molecular weight solute [g/mol]',
-        'XLogP3-AA solute',
-        'Hydrogen bond donor count solute',
-        'Hydrogen bond acceptor count solute',
-        'Rotatable bond count solute',
-        'Topological polar surface area solute [Å²]',
-        'Complexity solute',
-        'x' # solubility
-    ]
 
-    df = df[features].dropna()
+
+    df = df[selected_features].dropna()
 
     # Rename columns with brackets to parens to avoid issues with XGBoost
     df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
@@ -47,12 +63,10 @@ def train_model(X_train, y_train):
         random_state=42
     )
     
-    # Train the model
     model.fit(X_train, y_train)
     return model
 
 def plot_predictions(model, X_test, y_test):
-    # Calculate rmse
     y_pred = model.predict(X_test)
     rmse = root_mean_squared_error(y_test, y_pred)
 
@@ -93,7 +107,6 @@ def plot_parity(model, X_test, y_test):
     plt.tight_layout()
     plt.show()
 
-# Visualize feature importance
 def plot_feature_importance(model, feature_names):
     xgb.plot_importance(model, importance_type='weight', show_values=False)
     plt.xticks(rotation=45)

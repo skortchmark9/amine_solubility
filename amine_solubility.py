@@ -34,6 +34,11 @@ from collections import namedtuple, defaultdict
 import plotly
 from plotly.subplots import make_subplots
 
+text_columns = [
+    'Solubility of:',
+    'In:'
+]
+
 columns = [
     'Solubility of:',
     'In:',
@@ -186,16 +191,19 @@ def fix_commas(x):
         return float(str(x).replace(',', '.'))
     return x
 
-def load_data():
+def load_data(text=True):
     # Read the Excel file
+    path = 'data/Solubility data C4-C24.xlsx'
 
-    numeric_cols = set(columns) - set(['Solubility of:', 'In:'])
-    df = pd.read_excel("data/Solubility data C4-C24.xlsx", converters={
-        col: fix_commas for col in numeric_cols
-    })
+    numeric_cols = set(columns) - set(text_columns)
+    df = pd.read_excel(path, 
+        converters={
+            col: fix_commas for col in numeric_cols
+        },
+    )
 
-    df = strip_repeated_value_cols(df)
-    df = strip_bad_rows(df)
+    if text is False:
+        df = df.drop(columns=text_columns)
 
     return df
 
