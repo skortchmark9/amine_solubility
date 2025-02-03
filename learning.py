@@ -3,7 +3,12 @@ import pandas as pd
 from sklearn.base import is_classifier
 import xgboost as xgb
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import (
+    root_mean_squared_error,
+    mean_absolute_error,
+    mean_squared_error,
+    r2_score
+)
 import matplotlib.pyplot as plt
 from sklearn.base import ClassifierMixin
 from sklearn_compat.utils import get_tags
@@ -91,6 +96,44 @@ def train_model_simple(X_train, y_train):
     model.fit(X_train, y_train)
     return model
 
+
+def train_model_optimized():
+    data = select_features()
+    print("Optimizing hyperparameters...")
+    X = data.drop(columns=['x'])
+    y = data['x']
+
+    param_grid = {
+        "random_state": [42],
+        'learning_rate': [0.001, 0.01, 0.1],
+        'n_estimators': [200, 300, 400],
+        'max_depth': [3, 4, 5],
+        'subsample': [0.7, 0.8, 0.9],
+        'colsample_bytree': [0.6, 0.7, 0.8]
+    }
+
+    xgb_model = xgb.XGBRegressor(**param_grid)
+
+    grid_search = GridSearchCV(
+        estimator=xgb_model,
+        param_grid=param_grid,
+        scoring='neg_mean_squared_error',
+        cv=10,
+        n_jobs=-1
+    )
+
+    grid_search.fit(X.values, y.values)
+
+    # Get best model
+    best_model = grid_search.best_estimator_
+
+    print(f"Best parameters with score: {grid_search.best_score_:4f}")
+    print("\n".join(
+        [f"\t{k}: {v}" for k, v in grid_search.best_params_.items()]
+    ))
+    return best_model
+
+
 def plot_predictions(model, X_test, y_test):
     y_pred = model.predict(X_test)
     rmse = root_mean_squared_error(y_test, y_pred)
@@ -139,41 +182,18 @@ def plot_feature_importance(model):
     plt.show()
 
 
-def train_model_optimized():
-    data = select_features()
-    print("Optimizing hyperparameters...")
-    X = data.drop(columns=['x'])
-    y = data['x']
+def print_metrics(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    mse = mean_squared_error(y_test, y_pred)
+    rmse = root_mean_squared_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
 
-    param_grid = {
-        "random_state": [42],
-        'learning_rate': [0.001, 0.01, 0.1],
-        'n_estimators': [200, 300, 400],
-        'max_depth': [3, 4, 5],
-        'subsample': [0.7, 0.8, 0.9],
-        'colsample_bytree': [0.6, 0.7, 0.8]
-    }
+    print(f"MSE: {mse: .4f}")
+    print(f"RMSE: {rmse:.4f}")
+    print(f"MAE: {mae:.4f}")
+    print(f"R2: {r2:.4f}")
 
-    xgb_model = xgb.XGBRegressor(**param_grid)
-
-    grid_search = GridSearchCV(
-        estimator=xgb_model,
-        param_grid=param_grid,
-        scoring='neg_mean_squared_error',
-        cv=10,
-        n_jobs=-1
-    )
-
-    grid_search.fit(X.values, y.values)
-
-    # Get best model
-    best_model = grid_search.best_estimator_
-
-    print(f"Best parameters with score: {grid_search.best_score_:4f}")
-    print("\n".join(
-        [f"\t{k}: {v}" for k, v in grid_search.best_params_.items()]
-    ))
-    return best_model
 
 
 def main(optimize=True):
@@ -192,6 +212,8 @@ def main(optimize=True):
     model.get_booster().feature_names = feature_names
 
     pearson_correlation_coefficient()
+    
+    print_metrics(model, X_test, y_test)
     plot_predictions(model, X_test, y_test)
     plot_parity(model, X_test, y_test)
     plot_feature_importance(model)
