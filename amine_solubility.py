@@ -100,6 +100,7 @@ TempSolubility = namedtuple('point', ['temperature', 'solubility'])
 
 @dataclass(kw_only=True, frozen=True)
 class Compound:
+    name: str
     chno: CHNO
     molecular_weight_gpm: float
     xlogp3_aa: float
@@ -115,7 +116,11 @@ class Compound:
 
     def __str__(self):
         """Format the compound as a string based on chno"""
-        return f"Compound({chno_to_string(self.chno)})"
+        name = self.name
+        ## Remove the part in parenthesis
+        if '(' in name:
+            name = name[:name.index('(')]
+        return name
     
     def __repr__(self):
         return str(self)
@@ -123,6 +128,7 @@ class Compound:
 def compound_info(compound):
     """Create a tooltip to differentiate isomers"""
     keys = [
+        'name',
         'molecular_weight_gpm',
         'complexity',
         'hydrogen_bond_donor_count',
@@ -132,12 +138,13 @@ def compound_info(compound):
         'xlogp3_aa'
     ]
     as_dict = {key: getattr(compound, key) for key in keys}
-    text = str(compound.chno) + '<br />' + '<br />'.join([f"{key}: {value}" for key, value in as_dict.items()])
+    text = chno_to_string(compound.chno) + '<br />' + '<br />'.join([f"{key}: {value}" for key, value in as_dict.items()])
     return text
 
 
 def row_to_solvent(row):
     solvent = Compound(
+        name=row['In:'],
         chno=CHNO(row['C in solvent'], row['H in solvent'], row['N in solvent'], row['O in solvent']),
         molecular_weight_gpm=row['Molecular weight solvent [g/mol]'],
         xlogp3_aa=row['XLogP3-AA solvent'],
@@ -155,6 +162,7 @@ def row_to_solvent(row):
 
 def row_to_solute(row):
     solute = Compound(
+        name=row['Solubility of:'],
         chno=CHNO(row['C in solute'], row['H in solute'], row['N in solute'], row['O in solute']),
         molecular_weight_gpm=row['Molecular weight solute [g/mol]'],
         xlogp3_aa=row['XLogP3-AA solute'],
@@ -285,6 +293,8 @@ def plot_temperature_vs_solubility(experiments):
                 x=[point.temperature for point in points],
                 y=[point.solubility for point in points],
                 mode='markers',
+                legendgroup=chno_to_string(solute.chno),
+                legendgrouptitle=dict(text=chno_to_string(solute.chno)),
                 marker=dict(
                     color=colors[solute]
                 ),
@@ -298,6 +308,8 @@ def plot_temperature_vs_solubility(experiments):
                 x=[point.temperature for point in points],
                 y=[point.solubility for point in points],
                 mode='markers',
+                legendgroup=chno_to_string(solvent.chno),
+                legendgrouptitle=dict(text=chno_to_string(solvent.chno)),
                 marker=dict(
                     color=colors[solvent]
                 ),
@@ -310,6 +322,79 @@ def plot_temperature_vs_solubility(experiments):
     fig.update_xaxes(title_text="Temperature (K)", row=2, col=1)
     fig.update_yaxes(title_text="Solubility", row=1, col=1)
     fig.update_yaxes(title_text="Solubility", row=2, col=1)
+    fig.update_layout(
+        legend=dict(
+            entrywidth=70,
+            entrywidthmode="pixels", 
+            groupclick='toggleitem',
+        ),
+    )
+
+    fig.show()
+
+
+def plot_solubility_vs_temperature(experiments):
+    """This is a more common way to plot solubility data, where the x-axis is solubility and the y-axis is temperature.
+    
+    Additionally, we have flipped the solubility on the water axis."""
+    fig = make_subplots(rows=2, cols=1, subplot_titles=("Amines in Water", "Water in Amines (1 - X)"), shared_xaxes=True)
+    isomers = get_all_structural_isomers(experiments)
+
+    # Generate a color dict so each isomer has a consistent color
+    colorscale = list(reversed(plotly.colors.sequential.Turbo))
+    colors = {}
+    offset = 0
+    for compounds in isomers.values():
+        for i, compound in enumerate(compounds):
+            offset += 1
+            if compound not in colors:
+                colors[compound] = colorscale[(offset + i) % len(colorscale)]
+
+    for combination, points in experiments.items():
+        solute = combination.solute
+        solvent = combination.solvent
+
+        if solvent.chno == water:
+            trace = plotly.graph_objs.Scatter(
+                x=[point.solubility for point in points],
+                y=[point.temperature for point in points],
+                mode='markers',
+                legendgroup=chno_to_string(solute.chno),
+                legendgrouptitle=dict(text=chno_to_string(solute.chno)),
+                marker=dict(
+                    color=colors[solute]
+                ),
+                name=f"{solute}",
+                text=[compound_info(solute) for _ in points],
+                hoverinfo='text+x+y'
+            )
+            fig.add_trace(trace, row=1, col=1)
+        elif solute.chno == water:
+            trace = plotly.graph_objs.Scatter(
+                x=[1 - point.solubility for point in points],
+                y=[point.temperature for point in points],
+                mode='markers',
+                legendgroup=chno_to_string(solvent.chno),
+                legendgrouptitle=dict(text=chno_to_string(solvent.chno)),
+                marker=dict(
+                    color=colors[solvent]
+                ),
+                name=f"{solvent}",
+                text=[compound_info(solvent) for _ in points],
+                hoverinfo='text+x+y'
+            )
+            fig.add_trace(trace, row=2, col=1)
+
+    fig.update_xaxes(title_text="Solubility", row=2, col=1)
+    fig.update_yaxes(title_text="Temperature (K)", row=1, col=1)
+    fig.update_yaxes(title_text="Temperature (K)", row=2, col=1)
+    fig.update_layout(
+        legend=dict(
+            entrywidth=70,
+            entrywidthmode="pixels",
+            groupclick='toggleitem',
+        ),
+    )
 
     fig.show()
 
@@ -320,6 +405,7 @@ def main():
     isomers = get_all_structural_isomers(experiments)
     differing_properties_across_isomers(isomers)
     plot_temperature_vs_solubility(experiments)
+    plot_solubility_vs_temperature(experiments)
 
 if __name__ == '__main__':
     main()
