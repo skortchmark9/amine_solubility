@@ -2,7 +2,9 @@ pandas
 ipython
 plotly
 openpyxl
-scikit-learn
+# Pin scikit-learn to work around tags issue w/xgboost: https://github.com/dmlc/xgboost/issues/11093
+scikit-learn==1.5.2
 xgboost  # requires brew install libomp
 matplotlib
 seaborn
+statsmodels

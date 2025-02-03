@@ -1,29 +1,36 @@
+import pprint
 import pandas as pd
+from sklearn.base import is_classifier
 import xgboost as xgb
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import root_mean_squared_error
 import matplotlib.pyplot as plt
+from sklearn.base import ClassifierMixin
+from sklearn_compat.utils import get_tags
 
 from amine_solubility import load_data
 
 import seaborn as sns
 import matplotlib.pyplot as plt
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
 
 selected_features = [
     'T [K]',
-    'C in solute',
-    'H in solute',
-    'N in solute',
+    # 'C in solute',
+    # 'H in solute',
+    # 'N in solute',
     'O in solute',
-    'Molecular weight solute [g/mol]',
     'XLogP3-AA solute',
     'Hydrogen bond donor count solute',
     'Hydrogen bond acceptor count solute',
     'Rotatable bond count solute',
     'Topological polar surface area solute [Å²]',
-    'Complexity solute',
-    'x' # solubility
+    # 'Complexity solute',
+    'Undefined atom stereocenter count solute',
 ]
+
+target = ['x']
 
 
 def pearson_correlation_coefficient():
@@ -33,11 +40,23 @@ def pearson_correlation_coefficient():
 
     plt.figure(figsize=(12, 8))
     sns.heatmap(corr_matrix, annot=True, cmap="coolwarm", fmt=".2f")
-    plt.title("Feature Correlation Matrix")
+    plt.title("Pearson Feature Correlation Matrix")
     plt.show()
 
 
+def vif():
+    df = load_data(text=False)
+    df = df[selected_features].dropna()
+
+    vif_data = pd.DataFrame()
+    vif_data["feature"] = df.columns
+    vif_data["VIF"] = [variance_inflation_factor(df.values, i) for i in range(len(df.columns))]
+
+    print(vif_data)
+
+
 def select_features():
+    print("Selecting features...")
     df = load_data()
     
     # Keep only amines in water experiments
@@ -46,21 +65,27 @@ def select_features():
     # Filter the relevant features
 
 
-    df = df[selected_features].dropna()
+    df = df[selected_features + target].dropna()
 
     # Rename columns with brackets to parens to avoid issues with XGBoost
     df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
 
     return df
 
-def train_model(X_train, y_train):    
+def train_model_simple(X_train, y_train):    
     """Train and evaluate an XGBoost model"""
+
+    # From testing 2/3/2021
+    optimized_hyperparameters = {
+        "random_state": 42,
+        "colsample_bytree": 0.8,
+        "learning_rate": 0.01,
+        "max_depth": 4,
+        "n_estimators": 400,
+        "subsample": 0.9
+    }
     model = xgb.XGBRegressor(
-        objective='reg:squarederror', 
-        n_estimators=100,
-        learning_rate=0.1, 
-        max_depth=6, 
-        random_state=42
+        **optimized_hyperparameters
     )
     
     model.fit(X_train, y_train)
@@ -107,23 +132,69 @@ def plot_parity(model, X_test, y_test):
     plt.tight_layout()
     plt.show()
 
-def plot_feature_importance(model, feature_names):
+def plot_feature_importance(model):
     xgb.plot_importance(model, importance_type='weight', show_values=False)
     plt.xticks(rotation=45)
+    plt.tight_layout()
     plt.show()
 
 
-def main():
+def train_model_optimized():
+    data = select_features()
+    print("Optimizing hyperparameters...")
+    X = data.drop(columns=['x'])
+    y = data['x']
+
+    param_grid = {
+        "random_state": [42],
+        'learning_rate': [0.001, 0.01, 0.1],
+        'n_estimators': [200, 300, 400],
+        'max_depth': [3, 4, 5],
+        'subsample': [0.7, 0.8, 0.9],
+        'colsample_bytree': [0.6, 0.7, 0.8]
+    }
+
+    xgb_model = xgb.XGBRegressor(**param_grid)
+
+    grid_search = GridSearchCV(
+        estimator=xgb_model,
+        param_grid=param_grid,
+        scoring='neg_mean_squared_error',
+        cv=10,
+        n_jobs=-1
+    )
+
+    grid_search.fit(X.values, y.values)
+
+    # Get best model
+    best_model = grid_search.best_estimator_
+
+    print(f"Best parameters with score: {grid_search.best_score_:4f}")
+    print("\n".join(
+        [f"\t{k}: {v}" for k, v in grid_search.best_params_.items()]
+    ))
+    return best_model
+
+
+def main(optimize=True):
     data = select_features()
     X = data.drop(columns=['x'])
     y = data['x']
-    
     # Split into training and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    model = train_model(X_train, y_train)
+
+    if optimize:
+        model = train_model_optimized()
+    else:
+        model = train_model_simple(X_train, y_train)
+
+    feature_names = list(X.columns)
+    model.get_booster().feature_names = feature_names
+
+    pearson_correlation_coefficient()
     plot_predictions(model, X_test, y_test)
     plot_parity(model, X_test, y_test)
-    plot_feature_importance(model, X.columns)
+    plot_feature_importance(model)
     
     return model
 

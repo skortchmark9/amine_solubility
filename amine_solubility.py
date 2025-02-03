@@ -186,6 +186,16 @@ def strip_bad_rows(df):
 
     return df
 
+def strip_single_experiment_rows(df):
+    """Remove rows where there is only one instance of the 'C in solute'
+    e.g. e.g., 1-Methyldodecylamine and Trioctylamine
+    (If there are multiple rows with the same, it's either a different isomer
+    or a second sample of the same experiment)"""
+    df = df[df['C in solute'].duplicated(keep=False)]
+    df = df[df['C in solvent'].duplicated(keep=False)]
+    return df
+
+
 def fix_commas(x):
     if isinstance(x, str) and ',' in x:
         return float(str(x).replace(',', '.'))
@@ -201,6 +211,10 @@ def load_data(text=True):
             col: fix_commas for col in numeric_cols
         },
     )
+
+    df = strip_bad_rows(df)
+    df = strip_repeated_value_cols(df)
+    df = strip_single_experiment_rows(df)
 
     if text is False:
         df = df.drop(columns=text_columns)
