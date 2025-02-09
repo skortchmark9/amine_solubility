@@ -1,3 +1,4 @@
+import random
 import argparse
 import pprint
 import pandas as pd
@@ -23,7 +24,7 @@ from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 
 selected_features_orig = [
-    'T [K]',
+    'T (K)',
     # 'C in solute',
     # 'H in solute',
     # 'N in solute',
@@ -32,13 +33,38 @@ selected_features_orig = [
     'Hydrogen bond donor count solute',
     'Hydrogen bond acceptor count solute',
     'Rotatable bond count solute',
-    'Topological polar surface area solute [Å²]',
+    'Topological polar surface area solute (Å²)',
     'Complexity solute',
     'Undefined atom stereocenter count solute',
-    # 'Molecular weight solute [g/mol]',
+    # 'Molecular weight solute (g/mol)',
 ]
 
-selected_features = [
+selected_features_dual = [
+    'T (K)',
+    # 'C in solute',
+    # 'H in solute',
+    # 'N in solute',
+    # 'O in solute',
+    'XLogP3-AA solute',
+    'Hydrogen bond donor count solute',
+    'Hydrogen bond acceptor count solute',
+    'Rotatable bond count solute',
+    'Topological polar surface area solute (Å²)',
+    'Complexity solute',
+    'Undefined atom stereocenter count solute',
+    # 'Molecular weight solute (g/mol)',
+
+    'XLogP3-AA solvent',
+    'Hydrogen bond donor count solvent',
+    'Hydrogen bond acceptor count solvent',
+    'Rotatable bond count solvent',
+    'Topological polar surface area solvent (Å²)',
+    'Complexity solvent',
+    'Undefined atom stereocenter count solvent',
+]
+
+
+selected_features_one_compound = [
     'T (K)',
     'molecular_weight_gpm',
     'xlogp3_aa',
@@ -55,10 +81,11 @@ selected_features = [
 
 target = ['x']
 
+SELECTED_FEATURES = selected_features_dual
 
-def pearson_correlation_coefficient():
-    df = load_mutual_solubility_data()
-    df = df[selected_features].dropna()
+
+def pearson_correlation_coefficient(df):
+    df = df[SELECTED_FEATURES].dropna()
     corr_matrix = df.corr()
 
     plt.figure(figsize=(12, 8))
@@ -67,9 +94,8 @@ def pearson_correlation_coefficient():
     plt.show()
 
 
-def vif():
-    df = load_mutual_solubility_data()
-    df = df[selected_features].dropna()
+def vif(df):
+    df = df[SELECTED_FEATURES].dropna()
 
     vif_data = pd.DataFrame()
     vif_data["feature"] = df.columns
@@ -85,11 +111,7 @@ def select_features(df):
 
     print("Data size:", df.shape)
 
-    df = df[selected_features + target].dropna()
-
-    # Rename columns with brackets to parens to avoid issues with XGBoost
-    df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
-
+    df = df[SELECTED_FEATURES + target].dropna()
     return df
 
 def train_model_simple(X_train, y_train):    
@@ -208,7 +230,7 @@ def print_metrics(model, X_test, y_test):
     print(f"MAE: {mae:.4f}")
     print(f"R2: {r2:.4f}")
 
-def build_model(data, optimize=False):
+def build_model(data, optimize=False, graphs=True):
     X = data.drop(columns=['x'])
     y = data['x']
     # Split into training and test sets
@@ -222,24 +244,34 @@ def build_model(data, optimize=False):
     feature_names = list(X.columns)
     model.get_booster().feature_names = feature_names
 
-    pearson_correlation_coefficient()
     
     print_metrics(model, X_test, y_test)
-    plot_predictions(model, X_test, y_test)
-    plot_parity(model, X_test, y_test)
-    plot_feature_importance(model)
+    if graphs:
+        pearson_correlation_coefficient(data)
+        plot_predictions(model, X_test, y_test)
+        plot_parity(model, X_test, y_test)
+        plot_feature_importance(model)
     return model
 
-def predict_one(df):
-    name = 'Diethylamine (C4H11N)'
-    df_test = select_features(df[df['name'] == name])
+def predict_one(df, name):
+    # partition the df into two parts depending on a condition
+    cond = (df['Solubility of:'] == name) | (df['In:'] == name)
+    name_matches = df[cond]
+    name_not_matches = df[~cond]
+
+    df_test = select_features(name_matches)
     if df_test.empty:
         raise ValueError(f"No data for {name}")
-    df_train = select_features(df[df['name'] != name])
+    df_train = select_features(name_not_matches)
 
-    model = build_model(df_train, optimize=True)
+    model = build_model(df_train, graphs=False, optimize=False)
     y_pred = model.predict(df_test.drop(columns=['x']))
     y_actual = df_test['x']
+
+    # compare the prediction and actual values w/r2
+    r2 = r2_score(y_actual, y_pred)
+
+
 
     # Plot the prediction and actual against the temperature
     # using plotly
@@ -262,20 +294,30 @@ def predict_one(df):
             color='red'
         )
     )
+    fig.layout.title = name + (' (R2: %.2f)' % r2)
+    fig.update_xaxes(range=[0, 1])
     fig.add_trace(trace_pred)
     fig.add_trace(trace_actual)
     fig.show()
 
+def predict_some(df):
+    all_names = set(df['Solubility of:'].unique()) - set('Water')
+    names = random.sample(list(all_names), 5)
+
+    for name in names:
+        predict_one(df, name)
+
+
 
 def main():
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--predict_one", action="store_true", help="Show mutual solubility plots")
+    parser.add_argument("--predict", action="store_true", help="Show mutual solubility plots")
     parser.add_argument("--optimize", action="store_true", help="Show mutual solubility plots")
     args = parser.parse_args()
 
-    df = load_mutual_solubility_data()
-    if args.predict_one:
-        predict_one(df)
+    df = load_data()
+    if args.predict:
+        predict_some(df)
     else:
         build_model(select_features(df), args.optimize)
 

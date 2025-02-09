@@ -42,7 +42,7 @@ text_columns = [
     'In:'
 ]
 
-columns = [
+raw_columns = [
     'Solubility of:',
     'In:',
     'T [K]',
@@ -149,14 +149,14 @@ def row_to_solvent(row):
     solvent = Compound(
         name=row['In:'],
         chno=CHNO(row['C in solvent'], row['H in solvent'], row['N in solvent'], row['O in solvent']),
-        molecular_weight_gpm=row['Molecular weight solvent [g/mol]'],
+        molecular_weight_gpm=row['Molecular weight solvent (g/mol)'],
         xlogp3_aa=row['XLogP3-AA solvent'],
         hydrogen_bond_donor_count=row['Hydrogen bond donor count solvent'],
         hydrogen_bond_acceptor_count=row['Hydrogen bond acceptor count solvent'],
         rotatable_bond_count=row['Rotatable bond count solvent'],
-        exact_mass_da=row['Exact mass solvent [Da]'],
-        monoisotopic_mass_da=row['Monoisotopic mass solvent [Da]'],
-        topological_polar_surface_area_angstroms=row['Topological polar surface area solvent [Å²]'],
+        exact_mass_da=row['Exact mass solvent (Da)'],
+        monoisotopic_mass_da=row['Monoisotopic mass solvent (Da)'],
+        topological_polar_surface_area_angstroms=row['Topological polar surface area solvent (Å²)'],
         heavy_atom_count=row['Heavy atom count solvent'],
         complexity=row['Complexity solvent'],
         undefined_atom_stereocenter_count=row['Undefined atom stereocenter count solvent']
@@ -167,14 +167,14 @@ def row_to_solute(row):
     solute = Compound(
         name=row['Solubility of:'],
         chno=CHNO(row['C in solute'], row['H in solute'], row['N in solute'], row['O in solute']),
-        molecular_weight_gpm=row['Molecular weight solute [g/mol]'],
+        molecular_weight_gpm=row['Molecular weight solute (g/mol)'],
         xlogp3_aa=row['XLogP3-AA solute'],
         hydrogen_bond_donor_count=row['Hydrogen bond donor count solute'],
         hydrogen_bond_acceptor_count=row['Hydrogen bond acceptor count solute'],
         rotatable_bond_count=row['Rotatable bond count solute'],
-        exact_mass_da=row['Exact mass solute [Da]'],
-        monoisotopic_mass_da=row['Monoisotopic mass solute [Da]'],
-        topological_polar_surface_area_angstroms=row['Topological polar surface area solute [Å²]'],
+        exact_mass_da=row['Exact mass solute (Da)'],
+        monoisotopic_mass_da=row['Monoisotopic mass solute (Da)'],
+        topological_polar_surface_area_angstroms=row['Topological polar surface area solute (Å²)'],
         heavy_atom_count=row['Heavy atom count solute'],
         complexity=row['Complexity solute'],
         undefined_atom_stereocenter_count=row['Undefined atom stereocenter count solute']
@@ -216,7 +216,7 @@ def load_data(text=True):
     # Read the Excel file
     path = 'data/Solubility data C4-C24.xlsx'
 
-    numeric_cols = set(columns) - set(text_columns)
+    numeric_cols = set(raw_columns) - set(text_columns)
     df = pd.read_excel(path, 
         converters={
             col: fix_commas for col in numeric_cols
@@ -236,6 +236,9 @@ def load_data(text=True):
     # - SMOOTHED (if available for that combination)
     # - Experimental data (not SMOOTHED)
     df = df[(df['Experiment Ref'].isin(['SMOOTHED', 'SMOOTHED LCP'])) | (~has_smoothed)]
+
+    # Rename columns with brackets to parens to avoid issues with XGBoost
+    df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
 
     if text is False:
         df = df.drop(columns=text_columns)
