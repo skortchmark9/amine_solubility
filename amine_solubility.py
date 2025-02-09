@@ -95,7 +95,7 @@ def chno_to_string(chno):
     return ''.join(parts)
 
 Combination = namedtuple('Combination', ['solute', 'solvent'])
-TempSolubility = namedtuple('point', ['temperature', 'solubility'])
+TempSolubility = namedtuple('point', ['temperature', 'solubility', 'reference'])
 
 
 @dataclass(kw_only=True, frozen=True)
@@ -224,6 +224,17 @@ def load_data(text=True):
     df = strip_repeated_value_cols(df)
     df = strip_single_experiment_rows(df)
 
+    # Step 1: Identify combinations that have SMOOTHED data
+    has_smoothed = df.groupby(['Solubility of:', 'In:'])['Experiment Ref'].transform(
+        lambda x: 'SMOOTHED' in x.values or 'SMOOTHED LCP' in x.values
+    )
+
+    # Step 2: Select rows that are either:
+    # - SMOOTHED (if available for that combination)
+    # - Experimental data (not SMOOTHED)
+    df = df[(df['Experiment Ref'].isin(['SMOOTHED', 'SMOOTHED LCP'])) | (~has_smoothed)]
+
+
     if text is False:
         df = df.drop(columns=text_columns)
 
@@ -237,7 +248,8 @@ def get_experiments(df):
         combination = Combination(solute, solvent)
         temperature = row['T [K]']
         solubility = row['x']
-        experiments[combination].append(TempSolubility(temperature, solubility))
+        reference = row['Experiment Ref']
+        experiments[combination].append(TempSolubility(temperature, solubility, reference))
 
     return experiments
 

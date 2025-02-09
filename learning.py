@@ -63,9 +63,11 @@ def vif():
 def select_features():
     print("Selecting features...")
     df = load_data()
-    
+
     # Keep only amines in water experiments
     df = df[df['In:'] == 'Water']
+
+    print("Data size:", df.shape)
     
     # Filter the relevant features
 
@@ -85,9 +87,9 @@ def train_model_simple(X_train, y_train):
         "random_state": 42,
         "colsample_bytree": 0.8,
         "learning_rate": 0.01,
-        "max_depth": 4,
+        "max_depth": 3,
         "n_estimators": 400,
-        "subsample": 0.9
+        "subsample": 0.8
     }
     model = xgb.XGBRegressor(
         **optimized_hyperparameters
@@ -196,7 +198,7 @@ def print_metrics(model, X_test, y_test):
 
 
 
-def main(optimize=True):
+def main(optimize=False):
     data = select_features()
     X = data.drop(columns=['x'])
     y = data['x']
