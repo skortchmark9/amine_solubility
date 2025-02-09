@@ -126,6 +126,15 @@ def train_model_simple(X_train, y_train):
         "n_estimators": 400,
         "subsample": 0.8,
     }
+    # From stefano
+    optimized_hyperparameters = {
+        'learning_rate': 0.01,
+        'n_estimators': 400,
+        'max_depth': 4,
+        'subsample': 0.8,
+        'colsample_bytree': 0.8,
+        'random_state': 42
+    }
     model = xgb.XGBRegressor(
         **optimized_hyperparameters
     )

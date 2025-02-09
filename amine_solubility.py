@@ -505,7 +505,7 @@ def plot_mutual_solubility():
 
     # Set all plots to be between 0 and 1
     fig.update_xaxes(range=[0, 1])
-    fig.update_xaxes(title_text="Solubility")
+    fig.update_xaxes(title_text="Mole fraction amine")
     fig.update_yaxes(title_text="Temperature (K)")
     fig.update_layout(
         legend=dict(
@@ -522,7 +522,7 @@ def plot_mutual_solubility():
 def main():
     parser = argparse.ArgumentParser(description="Filter solubility data based on smoothing and mutual solubility.")
     # Add command-line flags
-    parser.add_argument("--mutual_solubility", action="store_true", help="Show mutual solubility plots")
+    parser.add_argument("--mutual_solubility", '--ms', action="store_true", help="Show mutual solubility plots")
 
     args = parser.parse_args()
     if args.mutual_solubility:
