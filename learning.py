@@ -312,7 +312,7 @@ def predict_some(df):
 def main():
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--predict", action="store_true", help="Show mutual solubility plots")
-    parser.add_argument("--optimize", action="store_true", help="Show mutual solubility plots")
+    parser.add_argument("--optimize", action="store_true", help="Run HPO")
     args = parser.parse_args()
 
     df = load_data()

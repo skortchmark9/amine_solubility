@@ -268,7 +268,7 @@ def get_experiments(df):
         solute = row_to_solute(row)
         solvent = row_to_solvent(row)
         combination = Combination(solute, solvent)
-        temperature = row['T [K]']
+        temperature = row['T (K)']
         solubility = row['x']
         reference = row['Experiment Ref']
         experiments[combination].append(TempSolubility(temperature, solubility, reference))
@@ -278,7 +278,7 @@ def get_experiments(df):
 def get_mutual_solubility(experiments):
     d = defaultdict(lambda: {
         'temperature': [],
-        'solubility': []
+        'x': []
     })
 
     for combination, points in experiments.items():
@@ -287,14 +287,14 @@ def get_mutual_solubility(experiments):
             d[(combination.solvent, combination.solute)]['temperature'].extend(
                 [point.temperature for point in points]
             )
-            d[(combination.solvent, combination.solute)]['solubility'].extend(
+            d[(combination.solvent, combination.solute)]['x'].extend(
                 [1 - point.solubility for point in points]
             )
         else:
             d[(combination.solute, combination.solvent)]['temperature'].extend(
                 [point.temperature for point in points]
             )
-            d[(combination.solute, combination.solvent)]['solubility'].extend(
+            d[(combination.solute, combination.solvent)]['x'].extend(
                 [point.solubility for point in points]
             )
 
@@ -488,13 +488,14 @@ def plot_mutual_solubility():
 
     for (amine, _), d in mutual_solubility.items():
         trace = plotly.graph_objs.Scatter(
-            x=d['solubility'],
+            x=d['x'],
             y=d['temperature'],
             mode='markers',
+            visible=True if amine.chno == CHNO(4, 11, 1, 0) else 'legendonly',
             legendgroup=chno_to_string(amine.chno),
             legendgrouptitle=dict(text=chno_to_string(amine.chno)),
             marker=dict(
-                size=20
+                size=10
             ),
             name=f"{amine}",
             text=[compound_info(amine) for _ in d['temperature']],
