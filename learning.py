@@ -1,3 +1,4 @@
+import argparse
 import pprint
 import pandas as pd
 from sklearn.base import is_classifier
@@ -13,33 +14,50 @@ import matplotlib.pyplot as plt
 from sklearn.base import ClassifierMixin
 from sklearn_compat.utils import get_tags
 
-from amine_solubility import load_data
+from amine_solubility import load_data, load_mutual_solubility_data
+import plotly
 
 import seaborn as sns
 import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 
-selected_features = [
+selected_features_orig = [
     'T [K]',
     # 'C in solute',
     # 'H in solute',
     # 'N in solute',
-    'O in solute',
+    # 'O in solute',
     'XLogP3-AA solute',
     'Hydrogen bond donor count solute',
     'Hydrogen bond acceptor count solute',
     'Rotatable bond count solute',
     'Topological polar surface area solute [Å²]',
-    # 'Complexity solute',
+    'Complexity solute',
     'Undefined atom stereocenter count solute',
+    # 'Molecular weight solute [g/mol]',
+]
+
+selected_features = [
+    'T (K)',
+    'molecular_weight_gpm',
+    'xlogp3_aa',
+    'hydrogen_bond_donor_count',
+    'hydrogen_bond_acceptor_count',
+    'rotatable_bond_count',
+    # 'exact_mass_da',
+    # 'monoisotopic_mass_da',
+    'topological_polar_surface_area_angstroms',
+    # 'heavy_atom_count',
+    'complexity',
+    'undefined_atom_stereocenter_count',
 ]
 
 target = ['x']
 
 
 def pearson_correlation_coefficient():
-    df = load_data(text=False)
+    df = load_mutual_solubility_data()
     df = df[selected_features].dropna()
     corr_matrix = df.corr()
 
@@ -50,7 +68,7 @@ def pearson_correlation_coefficient():
 
 
 def vif():
-    df = load_data(text=False)
+    df = load_mutual_solubility_data()
     df = df[selected_features].dropna()
 
     vif_data = pd.DataFrame()
@@ -60,17 +78,12 @@ def vif():
     print(vif_data)
 
 
-def select_features():
+def select_features(df):
     print("Selecting features...")
-    df = load_data()
-
     # Keep only amines in water experiments
-    df = df[df['In:'] == 'Water']
+    # df = df[df['Solubility of:'] == 'Water']
 
     print("Data size:", df.shape)
-    
-    # Filter the relevant features
-
 
     df = df[selected_features + target].dropna()
 
@@ -89,7 +102,7 @@ def train_model_simple(X_train, y_train):
         "learning_rate": 0.01,
         "max_depth": 3,
         "n_estimators": 400,
-        "subsample": 0.8
+        "subsample": 0.8,
     }
     model = xgb.XGBRegressor(
         **optimized_hyperparameters
@@ -99,11 +112,8 @@ def train_model_simple(X_train, y_train):
     return model
 
 
-def train_model_optimized():
-    data = select_features()
+def train_model_optimized(X_train, y_train):
     print("Optimizing hyperparameters...")
-    X = data.drop(columns=['x'])
-    y = data['x']
 
     param_grid = {
         "random_state": [42],
@@ -111,7 +121,9 @@ def train_model_optimized():
         'n_estimators': [200, 300, 400],
         'max_depth': [3, 4, 5],
         'subsample': [0.7, 0.8, 0.9],
-        'colsample_bytree': [0.6, 0.7, 0.8]
+        'colsample_bytree': [0.6, 0.7, 0.8],
+        # 'objective': 'reg:quantileerror',
+        # 'alpha': 0.5,
     }
 
     xgb_model = xgb.XGBRegressor(**param_grid)
@@ -124,7 +136,7 @@ def train_model_optimized():
         n_jobs=-1
     )
 
-    grid_search.fit(X.values, y.values)
+    grid_search.fit(X_train, y_train)
 
     # Get best model
     best_model = grid_search.best_estimator_
@@ -196,17 +208,14 @@ def print_metrics(model, X_test, y_test):
     print(f"MAE: {mae:.4f}")
     print(f"R2: {r2:.4f}")
 
-
-
-def main(optimize=False):
-    data = select_features()
+def build_model(data, optimize=False):
     X = data.drop(columns=['x'])
     y = data['x']
     # Split into training and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     if optimize:
-        model = train_model_optimized()
+        model = train_model_optimized(X_train, y_train)
     else:
         model = train_model_simple(X_train, y_train)
 
@@ -219,8 +228,58 @@ def main(optimize=False):
     plot_predictions(model, X_test, y_test)
     plot_parity(model, X_test, y_test)
     plot_feature_importance(model)
-    
     return model
+
+def predict_one(df):
+    name = 'Diethylamine (C4H11N)'
+    df_test = select_features(df[df['name'] == name])
+    if df_test.empty:
+        raise ValueError(f"No data for {name}")
+    df_train = select_features(df[df['name'] != name])
+
+    model = build_model(df_train, optimize=True)
+    y_pred = model.predict(df_test.drop(columns=['x']))
+    y_actual = df_test['x']
+
+    # Plot the prediction and actual against the temperature
+    # using plotly
+    fig = plotly.graph_objs.Figure()
+    trace_pred = plotly.graph_objs.Scatter(
+        x=y_pred,
+        y=df_test['T (K)'],
+        mode='markers',
+        name='Predicted',
+        marker=dict(
+            color='blue'
+        )
+    )
+    trace_actual = plotly.graph_objs.Scatter(
+        x=y_actual,
+        y=df_test['T (K)'],
+        mode='markers',
+        name='Actual',
+        marker=dict(
+            color='red'
+        )
+    )
+    fig.add_trace(trace_pred)
+    fig.add_trace(trace_actual)
+    fig.show()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument("--predict_one", action="store_true", help="Show mutual solubility plots")
+    parser.add_argument("--optimize", action="store_true", help="Show mutual solubility plots")
+    args = parser.parse_args()
+
+    df = load_mutual_solubility_data()
+    if args.predict_one:
+        predict_one(df)
+    else:
+        build_model(select_features(df), args.optimize)
+
+
 
 if __name__ == "__main__":
     main()

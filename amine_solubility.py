@@ -28,12 +28,15 @@
 Samples to features:
     1986 : 120
 """
-from dataclasses import dataclass, fields
+import argparse
+from dataclasses import dataclass, fields, asdict
 import pandas as pd
 from collections import namedtuple, defaultdict
 import plotly
 from plotly.subplots import make_subplots
 
+# "Solubility of <solute> in <solvent>"
+# U before V!
 text_columns = [
     'Solubility of:',
     'In:'
@@ -234,11 +237,27 @@ def load_data(text=True):
     # - Experimental data (not SMOOTHED)
     df = df[(df['Experiment Ref'].isin(['SMOOTHED', 'SMOOTHED LCP'])) | (~has_smoothed)]
 
-
     if text is False:
         df = df.drop(columns=text_columns)
 
     return df
+
+def load_mutual_solubility_data():
+    df = load_data()
+    e = get_experiments(df)
+    ms = get_mutual_solubility(e)
+
+    ds = []
+    for (solute, solvent), d in ms.items():
+        for temperature, solubility in zip(d['temperature'], d['solubility']):
+            ds.append({
+                **asdict(solute),
+                'T (K)': temperature,
+                'x': solubility
+            })
+
+    new_df = pd.DataFrame(ds)
+    return new_df
 
 def get_experiments(df):
     experiments = defaultdict(list)
@@ -252,6 +271,32 @@ def get_experiments(df):
         experiments[combination].append(TempSolubility(temperature, solubility, reference))
 
     return experiments
+
+def get_mutual_solubility(experiments):
+    d = defaultdict(lambda: {
+        'temperature': [],
+        'solubility': []
+    })
+
+    for combination, points in experiments.items():
+        # If it's water, flip the solubility
+        if combination.solute.chno == water:
+            d[(combination.solvent, combination.solute)]['temperature'].extend(
+                [point.temperature for point in points]
+            )
+            d[(combination.solvent, combination.solute)]['solubility'].extend(
+                [1 - point.solubility for point in points]
+            )
+        else:
+            d[(combination.solute, combination.solvent)]['temperature'].extend(
+                [point.temperature for point in points]
+            )
+            d[(combination.solute, combination.solvent)]['solubility'].extend(
+                [point.solubility for point in points]
+            )
+
+    return d
+
 
 def get_all_compounds(experiments):
     compounds = set()
@@ -410,7 +455,7 @@ def plot_solubility_vs_temperature(experiments):
 
     fig.show()
 
-def main():
+def double_plots():
     df = load_data()
     experiments = get_experiments(df)
     compounds = get_all_compounds(experiments)
@@ -418,6 +463,68 @@ def main():
     differing_properties_across_isomers(isomers)
     plot_temperature_vs_solubility(experiments)
     plot_solubility_vs_temperature(experiments)
+
+def plot_mutual_solubility():
+    df = load_data()
+    experiments = get_experiments(df)
+    isomers = get_all_structural_isomers(experiments)
+
+    mutual_solubility = get_mutual_solubility(experiments)
+
+    fig = plotly.graph_objs.Figure()
+
+    # Generate a color dict so each isomer has a consistent color
+    colorscale = list(reversed(plotly.colors.sequential.Turbo))
+    colors = {}
+    offset = 0
+    for compounds in isomers.values():
+        for i, compound in enumerate(compounds):
+            offset += 1
+            if compound not in colors:
+                colors[compound] = colorscale[(offset + i) % len(colorscale)]
+
+    for (amine, _), d in mutual_solubility.items():
+        trace = plotly.graph_objs.Scatter(
+            x=d['solubility'],
+            y=d['temperature'],
+            mode='markers',
+            legendgroup=chno_to_string(amine.chno),
+            legendgrouptitle=dict(text=chno_to_string(amine.chno)),
+            marker=dict(
+                size=20
+            ),
+            name=f"{amine}",
+            text=[compound_info(amine) for _ in d['temperature']],
+            hoverinfo='text+x+y'
+        )
+        fig.add_trace(trace)
+
+    # Set all plots to be between 0 and 1
+    fig.update_xaxes(range=[0, 1])
+    fig.update_xaxes(title_text="Solubility")
+    fig.update_yaxes(title_text="Temperature (K)")
+    fig.update_layout(
+        legend=dict(
+            entrywidth=70,
+            entrywidthmode="pixels",
+            groupclick='toggleitem',
+        ),
+    )
+
+    fig.show()
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Filter solubility data based on smoothing and mutual solubility.")
+    # Add command-line flags
+    parser.add_argument("--mutual_solubility", action="store_true", help="Show mutual solubility plots")
+
+    args = parser.parse_args()
+    if args.mutual_solubility:
+        plot_mutual_solubility()
+    else:
+        double_plots()
 
 if __name__ == '__main__':
     main()
