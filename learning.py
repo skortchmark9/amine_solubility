@@ -81,7 +81,7 @@ selected_features_one_compound = [
 
 target = ['x']
 
-SELECTED_FEATURES = selected_features_dual
+SELECTED_FEATURES = selected_features_one_compound
 
 
 def pearson_correlation_coefficient(df):
@@ -264,7 +264,10 @@ def build_model(data, optimize=False, graphs=True):
 
 def predict_one(df, name):
     # partition the df into two parts depending on a condition
-    cond = (df['Solubility of:'] == name) | (df['In:'] == name)
+    if 'name' in df.keys():
+        cond = (df['name'] == name)
+    else:
+        cond = (df['Solubility of:'] == name) | (df['In:'] == name)
     name_matches = df[cond]
     name_not_matches = df[~cond]
 
@@ -310,7 +313,10 @@ def predict_one(df, name):
     fig.show()
 
 def predict_some(df):
-    all_names = set(df['Solubility of:'].unique()) - set('Water')
+    if 'name' in df.keys():
+        all_names = set(df.name.unique()) - set('Water')
+    else:
+        all_names = set(df['Solubility of:'].unique()) - set('Water')
     names = random.sample(list(all_names), 5)
 
     for name in names:
@@ -319,12 +325,22 @@ def predict_some(df):
 
 
 def main():
+    global SELECTED_FEATURES
     parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--predict", action="store_true", help="Show mutual solubility plots")
+    parser.add_argument("--predict", action="store_true", help="Show plots")
+    parser.add_argument("--mutual_solubility", "--ms", action="store_true", help="mutual solubility")
     parser.add_argument("--optimize", action="store_true", help="Run HPO")
     args = parser.parse_args()
 
-    df = load_data()
+    if args.mutual_solubility:
+        df = load_mutual_solubility_data()
+        SELECTED_FEATURES = selected_features_one_compound
+    else:
+        df = load_data()
+        # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
+        df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
+        SELECTED_FEATURES = selected_features_dual
+
     if args.predict:
         predict_some(df)
     else:

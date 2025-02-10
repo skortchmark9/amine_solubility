@@ -252,7 +252,7 @@ def load_mutual_solubility_data():
 
     ds = []
     for (solute, solvent), d in ms.items():
-        for temperature, solubility in zip(d['temperature'], d['solubility']):
+        for temperature, solubility in zip(d['temperature'], d['x']):
             ds.append({
                 **asdict(solute),
                 'T (K)': temperature,
