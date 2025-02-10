@@ -252,11 +252,12 @@ def load_mutual_solubility_data():
 
     ds = []
     for (solute, solvent), d in ms.items():
-        for temperature, solubility in zip(d['temperature'], d['x']):
+        for temperature, x, aiw in zip(d['temperature'], d['x'], d['aiw']):
             ds.append({
                 **asdict(solute),
                 'T (K)': temperature,
-                'x': solubility
+                'x': x,
+                'aiw': aiw,
             })
 
     new_df = pd.DataFrame(ds)
@@ -279,6 +280,7 @@ def get_mutual_solubility(experiments):
     d = defaultdict(lambda: {
         'temperature': [],
         'x': [],
+        'aiw': [],
     })
 
     for combination, points in experiments.items():
@@ -290,6 +292,10 @@ def get_mutual_solubility(experiments):
             d[(combination.solvent, combination.solute)]['x'].extend(
                 [1 - point.solubility for point in points]
             )
+            d[(combination.solvent, combination.solute)]['aiw'].extend(
+                [True for point in points]
+            )
+
         else:
             d[(combination.solute, combination.solvent)]['temperature'].extend(
                 [point.temperature for point in points]
@@ -297,6 +303,10 @@ def get_mutual_solubility(experiments):
             d[(combination.solute, combination.solvent)]['x'].extend(
                 [point.solubility for point in points]
             )
+            d[(combination.solute, combination.solvent)]['aiw'].extend(
+                [False for point in points]
+            )
+
 
     return d
 

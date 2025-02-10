@@ -77,6 +77,7 @@ selected_features_one_compound = [
     # 'heavy_atom_count',
     'complexity',
     'undefined_atom_stereocenter_count',
+    'aiw',  # field i added to maybe help with bimodality.
 ]
 
 target = ['x']
@@ -276,7 +277,7 @@ def predict_one(df, name):
         raise ValueError(f"No data for {name}")
     df_train = select_features(name_not_matches)
 
-    model = build_model(df_train, graphs=False, optimize=False)
+    model = build_model(df_train, graphs=True, optimize=True)
     y_pred = model.predict(df_test.drop(columns=['x']))
     y_actual = df_test['x']
 
