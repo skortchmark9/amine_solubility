@@ -340,7 +340,7 @@ def main():
 
     df = load_data()
     # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
-    # df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
+    df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
 
     SELECTED_FEATURES = selected_features_dual
 

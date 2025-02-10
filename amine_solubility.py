@@ -278,7 +278,7 @@ def get_experiments(df):
 def get_mutual_solubility(experiments):
     d = defaultdict(lambda: {
         'temperature': [],
-        'x': []
+        'x': [],
     })
 
     for combination, points in experiments.items():

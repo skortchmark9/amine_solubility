@@ -328,7 +328,7 @@ def main():
     global SELECTED_FEATURES
     parser = argparse.ArgumentParser(description="")
     parser.add_argument("--predict", action="store_true", help="Show plots")
-    parser.add_argument("--model", action="store_true", help="mutual solubility")
+    parser.add_argument("--model", action="store", help="mutual solubility")
     parser.add_argument("--optimize", action="store_true", help="Run HPO")
     args = parser.parse_args()
 
