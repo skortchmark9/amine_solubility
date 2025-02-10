@@ -1,6 +1,7 @@
 import random
 import argparse
 import pprint
+import numpy as np
 import pandas as pd
 from sklearn.base import is_classifier
 import xgboost as xgb
@@ -23,23 +24,9 @@ import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 
 
-selected_features_orig = [
-    'T (K)',
-    # 'C in solute',
-    # 'H in solute',
-    # 'N in solute',
-    # 'O in solute',
-    'XLogP3-AA solute',
-    'Hydrogen bond donor count solute',
-    'Hydrogen bond acceptor count solute',
-    'Rotatable bond count solute',
-    'Topological polar surface area solute (Å²)',
-    'Complexity solute',
-    'Undefined atom stereocenter count solute',
-    # 'Molecular weight solute (g/mol)',
-]
-
 selected_features_dual = [
+    'Solubility of:',
+    'In:',
     'T (K)',
     # 'C in solute',
     # 'H in solute',
@@ -63,29 +50,12 @@ selected_features_dual = [
     'Undefined atom stereocenter count solvent',
 ]
 
-
-selected_features_one_compound = [
-    'T (K)',
-    'molecular_weight_gpm',
-    'xlogp3_aa',
-    'hydrogen_bond_donor_count',
-    'hydrogen_bond_acceptor_count',
-    'rotatable_bond_count',
-    # 'exact_mass_da',
-    # 'monoisotopic_mass_da',
-    'topological_polar_surface_area_angstroms',
-    # 'heavy_atom_count',
-    'complexity',
-    'undefined_atom_stereocenter_count',
-]
-
 target = ['x']
 
-SELECTED_FEATURES = selected_features_one_compound
+SELECTED_FEATURES = selected_features_dual
 
 
 def pearson_correlation_coefficient(df):
-    df = df[SELECTED_FEATURES].dropna()
     corr_matrix = df.corr()
 
     plt.figure(figsize=(12, 8))
@@ -239,7 +209,7 @@ def print_metrics(model, X_test, y_test):
     print(f"MAE: {mae:.4f}")
     print(f"R2: {r2:.4f}")
 
-def build_model(data, optimize=False, graphs=True):
+def build_model(data, optimize=False, graphs=False):
     X = data.drop(columns=['x'])
     y = data['x']
     # Split into training and test sets
@@ -262,6 +232,20 @@ def build_model(data, optimize=False, graphs=True):
         plot_feature_importance(model)
     return model
 
+def build_combined_model(df, optimize=False, graphs=True):
+    water_in_amine = df[df['Solubility of:'] == 'Water']
+    amine_in_water = df[df['Solubility of:'] != 'Water']
+
+    print('Building model for water in amine')
+    m_wia = CombinedModel.build(water_in_amine, optimize)
+
+    print('Building model for amine in water')
+    m_aiw = CombinedModel.build(amine_in_water, optimize)
+
+    model = CombinedModel(m_wia, m_aiw)
+    return model
+
+
 def predict_one(df, name):
     # partition the df into two parts depending on a condition
     if 'name' in df.keys():
@@ -271,12 +255,10 @@ def predict_one(df, name):
     name_matches = df[cond]
     name_not_matches = df[~cond]
 
-    df_test = select_features(name_matches)
-    if df_test.empty:
-        raise ValueError(f"No data for {name}")
-    df_train = select_features(name_not_matches)
+    df_test = name_matches
+    df_train = name_not_matches
 
-    model = build_model(df_train, graphs=False, optimize=False)
+    model = build_combined_model(df_train, graphs=False, optimize=True)
     y_pred = model.predict(df_test.drop(columns=['x']))
     y_actual = df_test['x']
 
@@ -323,6 +305,30 @@ def predict_some(df):
         predict_one(df, name)
 
 
+class CombinedModel:
+    def __init__(self, model_wia, model_aiw):
+        self.model_wia = model_wia
+        self.model_aiw = model_aiw
+
+    @classmethod
+    def build(cls, df, optimize=False):
+        features = [feat for feat in SELECTED_FEATURES if feat not in (
+            'Solubility of:', 'In:'
+        )]
+        df = df[features + target].dropna()
+        return build_model(df, optimize)
+    
+    def predict(self, df):
+        df_wia = df[df['Solubility of:'] == 'Water']
+        df_aiw = df[df['Solubility of:'] != 'Water']
+
+        features = [feat for feat in SELECTED_FEATURES if feat not in (
+            'Solubility of:', 'In:'
+        )]
+
+        y_pred_wia = self.model_wia.predict(df_wia[features])
+        y_pred_aiw = self.model_aiw.predict(df_aiw[features])
+        return np.concatenate([y_pred_aiw, y_pred_wia])
 
 def main():
     global SELECTED_FEATURES
@@ -332,19 +338,17 @@ def main():
     parser.add_argument("--optimize", action="store_true", help="Run HPO")
     args = parser.parse_args()
 
-    if args.model == 'ms':
-        df = load_mutual_solubility_data()
-        SELECTED_FEATURES = selected_features_one_compound
-    else:
-        df = load_data()
-        # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
-        df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
-        SELECTED_FEATURES = selected_features_dual
+    df = load_data()
+    # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
+    # df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
+
+    SELECTED_FEATURES = selected_features_dual
+
 
     if args.predict:
         predict_some(df)
     else:
-        build_model(select_features(df), args.optimize)
+        build_combined_model(df, args.optimize)
 
 
 
