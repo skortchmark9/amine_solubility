@@ -277,7 +277,7 @@ def predict_one(df, name):
         raise ValueError(f"No data for {name}")
     df_train = select_features(name_not_matches)
 
-    model = build_model(df_train, graphs=True, optimize=True)
+    model = build_model(df_train, graphs=False, optimize=True)
     y_pred = model.predict(df_test.drop(columns=['x']))
     y_actual = df_test['x']
 
@@ -318,7 +318,10 @@ def predict_some(df):
         all_names = set(df.name.unique()) - set('Water')
     else:
         all_names = set(df['Solubility of:'].unique()) - set('Water')
+
+    
     names = random.sample(list(all_names), 5)
+    names += ['Diisopropylamine (C6H15N)', 'Dipropylamine\xa0(C6H15N)']
 
     for name in names:
         predict_one(df, name)

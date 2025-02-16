@@ -5,7 +5,9 @@
 14 with 1 data point
 1 h2o
 23 structural isomers
-62 amines. Unique property values:
+62 amines.
+
+Unique property values:
   = shared across isomers
   * differing across isomers
 
@@ -128,7 +130,7 @@ class Compound:
     def __repr__(self):
         return str(self)
 
-def compound_info(compound):
+def compound_info(compound, reference=None):
     """Create a tooltip to differentiate isomers"""
     keys = [
         'name',
@@ -142,6 +144,8 @@ def compound_info(compound):
     ]
     as_dict = {key: getattr(compound, key) for key in keys}
     text = chno_to_string(compound.chno) + '<br />' + '<br />'.join([f"{key}: {value}" for key, value in as_dict.items()])
+    if reference:
+        text += f"<br />Reference: {reference}"
     return text
 
 
@@ -213,6 +217,7 @@ def fix_commas(x):
     return x
 
 def load_data(text=True):
+
     # Read the Excel file
     path = 'data/Solubility data C4-C24.xlsx'
 
@@ -227,15 +232,20 @@ def load_data(text=True):
     df = strip_repeated_value_cols(df)
     df = strip_single_experiment_rows(df)
 
-    # Step 1: Identify combinations that have SMOOTHED data
-    has_smoothed = df.groupby(['Solubility of:', 'In:'])['Experiment Ref'].transform(
-        lambda x: 'SMOOTHED' in x.values or 'SMOOTHED LCP' in x.values
-    )
+    filter_smoothing = False
+    if filter_smoothing:
+        # Step 1: Identify combinations that have SMOOTHED data
+        has_smoothed = df.groupby(['Solubility of:', 'In:'])['Experiment Ref'].transform(
+            lambda x: 'SMOOTHED' in x.values or 'SMOOTHED LCP' in x.values
+        )
 
-    # Step 2: Select rows that are either:
-    # - SMOOTHED (if available for that combination)
-    # - Experimental data (not SMOOTHED)
-    df = df[(df['Experiment Ref'].isin(['SMOOTHED', 'SMOOTHED LCP'])) | (~has_smoothed)]
+        # Step 2: Select rows that are either:
+        # - SMOOTHED (if available for that combination)
+        # - Experimental data (not SMOOTHED)
+        df = df[(df['Experiment Ref'].isin(['SMOOTHED', 'SMOOTHED LCP'])) | (~has_smoothed)]
+    else:
+        df = df[~(df['Experiment Ref'].isin(['SMOOTHED', 'SMOOTHED LCP']))]
+
 
     # Rename columns with brackets to parens to avoid issues with XGBoost
     df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
@@ -281,6 +291,7 @@ def get_mutual_solubility(experiments):
         'temperature': [],
         'x': [],
         'aiw': [],
+        'reference': [],
     })
 
     for combination, points in experiments.items():
@@ -295,6 +306,9 @@ def get_mutual_solubility(experiments):
             d[(combination.solvent, combination.solute)]['aiw'].extend(
                 [True for point in points]
             )
+            d[(combination.solvent, combination.solute)]['reference'].extend(
+                [point.reference for point in points]
+            )
 
         else:
             d[(combination.solute, combination.solvent)]['temperature'].extend(
@@ -306,7 +320,9 @@ def get_mutual_solubility(experiments):
             d[(combination.solute, combination.solvent)]['aiw'].extend(
                 [False for point in points]
             )
-
+            d[(combination.solute, combination.solvent)]['reference'].extend(
+                [point.reference for point in points]
+            )
 
     return d
 
@@ -369,7 +385,7 @@ def plot_temperature_vs_solubility(experiments):
                     color=colors[solute]
                 ),
                 name=f"{solute}",
-                text=[compound_info(solute) for _ in points],
+                text=[compound_info(solute, point.reference) for point in points],
                 hoverinfo='text+x+y'
             )
             fig.add_trace(trace, row=1, col=1)
@@ -384,7 +400,7 @@ def plot_temperature_vs_solubility(experiments):
                     color=colors[solvent]
                 ),
                 name=f"{solvent}",
-                text=[compound_info(solvent) for _ in points],
+                text=[compound_info(solvent, point.reference) for point in points],
                 hoverinfo='text+x+y'
             )
             fig.add_trace(trace, row=2, col=1)
@@ -435,7 +451,7 @@ def plot_solubility_vs_temperature(experiments):
                     color=colors[solute]
                 ),
                 name=f"{solute}",
-                text=[compound_info(solute) for _ in points],
+                text=[compound_info(solute, point.reference) for point in points],
                 hoverinfo='text+x+y'
             )
             fig.add_trace(trace, row=1, col=1)
@@ -450,7 +466,7 @@ def plot_solubility_vs_temperature(experiments):
                     color=colors[solvent]
                 ),
                 name=f"{solvent}",
-                text=[compound_info(solvent) for _ in points],
+                text=[compound_info(solvent, point.reference) for point in points],
                 hoverinfo='text+x+y'
             )
             fig.add_trace(trace, row=2, col=1)
@@ -508,7 +524,7 @@ def plot_mutual_solubility():
                 size=10
             ),
             name=f"{amine}",
-            text=[compound_info(amine) for _ in d['temperature']],
+            text=[compound_info(amine, ref) for ref in d['reference']],
             hoverinfo='text+x+y'
         )
         fig.add_trace(trace)
