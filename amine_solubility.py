@@ -210,14 +210,15 @@ def strip_single_experiment_rows(df):
     df = df[df['C in solvent'].duplicated(keep=False)]
     return df
 
+def remove_nbsp(df):
+    return df.replace(u'\xa0', u' ', regex=True)
 
 def fix_commas(x):
     if isinstance(x, str) and ',' in x:
         return float(str(x).replace(',', '.'))
     return x
 
-def load_data(text=True):
-
+def load_data():
     # Read the Excel file
     path = 'data/Solubility data C4-C24.xlsx'
 
@@ -231,6 +232,9 @@ def load_data(text=True):
     df = strip_bad_rows(df)
     df = strip_repeated_value_cols(df)
     df = strip_single_experiment_rows(df)
+    df = remove_nbsp(df)
+    
+
 
     filter_smoothing = False
     if filter_smoothing:
@@ -250,10 +254,21 @@ def load_data(text=True):
     # Rename columns with brackets to parens to avoid issues with XGBoost
     df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
 
-    if text is False:
-        df = df.drop(columns=text_columns)
+    # Add SMILES codes for each compound
+    smiles_map = load_smiles()
+    df['Solute SMILES'] = df['Solubility of:'].map(smiles_map)
+    df['Solvent SMILES'] = df['In:'].map(smiles_map)
 
     return df
+
+def load_smiles():
+    """Simplified Molecular Input Line Entry System (SMILES)
+    codes for each compound."""
+    df = pd.read_csv('data/amine_smiles.csv')
+    smiles_map = {}
+    for i, row in df.iterrows():
+        smiles_map[row['Compound Name']] = row['SMILES Code']
+    return smiles_map
 
 def load_mutual_solubility_data():
     df = load_data()

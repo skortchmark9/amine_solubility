@@ -1,0 +1,96 @@
+Compound Name,SMILES Code
+Water,O
+Diethylamine (C4H11N),CCNCC
+Ethylpropylamine (C5H13N),CCNCCC
+"N,N-Diethylmethylamine (C5H13N)",CCN(C)CC
+Methylbutylamine (C5H13N),CCCCN(C)C
+1-Methylbutylamine (C5H13N),CCC(C)CN
+1-Ethylpropylamine (C5H13N),CC(CC)CN
+Diallylamine (C6H11N),C=CCNCC=C
+N-Ethylmethylallylamine (C6H13N),CCN(C)CC=C
+Hexamethyleneimine (C6H13N),C1CCNCCC1
+1-Methylpiperidine (C6H13N),CN1CCCCC1
+2-Methylpiperidine (C6H13N),CC1CCCCN1
+3-Methylpiperidine (C6H13N),CC1CCCNCC1
+4-Methylpiperidine (C6H13N),CC1CCNCCC1
+Butyldimethylamine (C6H15N),CCCCN(C)C
+tert-Butyldimethylamine (C6H15N),CC(C)(C)N(C)C
+Ethylbutylamine (C6H15N),CCCCNCC
+sec-Butylethylamine (C16H15N),CC(C)CNCC
+tert-Butylethylamine (C6H15N),CC(C)(C)NCC
+Diisopropylamine (C6H15N),CC(C)N(C)C(C)C
+Dipropylamine (C6H15N),CCCNCCC
+Hexylamine (C6H15N),CCCCCCN
+Triethylamine (C6H15N),CCN(CC)CC
+"2,6-Dimethylpiperidine (C7H15N)",CC1CCCC(N1)C
+"3,3-Dimethylpiperidine (C7H15N)",CC1(CCCNCC1)C
+"3,5-Dimethylpiperidine (3,5-Lupetidine); C7H15N",CC1CC(C)CNCC1
+N-Methylcyclohexylamine (C7H15N),CNC1CCCCC1
+2-Methylcyclohexylamine (C7H15N),CC1CCCCC1N
+Heptylamine (C7H17N),CCCCCCCN
+"N-Methyl-1,3-dimethylbutylamine (C7H17N)",CC(C)CC(C)N(C)C
+1-Methylhexylamine (C7H17N),CCCCCC(C)N
+1-Ethylpiperidine (C7H19N),CCN1CCCCC1
+2-Ethylpiperidine (C7H19N),CCC1CCCCN1
+"N,N-Dimethylcyclohexylamine (C8H17N)",CN(C)C1CCCCC1
+N-Ethylcyclohexylamine (C8H17N),CCNC1CCCCC1
+Dibutylamine (C8H19N),CCCCNCCCC
+Diisobutylamine (C8H19N),CC(C)CNCC(C)C
+Di-sec-butylamine (C8H19N),CC(C)CN(C)C(C)C
+"N,N-Diisopropylethylamine (C8H19N)",CCN(C(C)C)C(C)C
+"1,5-Dimethylhexylamine (C8H19N)",CC(C)CCCC(C)N
+2-Ethylhexylamine (C8H19N),CCC(CC)CCN
+Octylamine (C8H19N),CCCCCCCN
+tert-Octylamine (C8H19N),CC(C)(C)CC(C)(C)N
+1-Propylpiperidine (C8H21N),CCCN1CCCCC1
+Triallylamine (C9H15N),C=CCN(CC=C)CC=C
+N-Isopropylcyclohexylamine (C9H19N),CC(C)NC1CCCCC1
+"3,3,5-Trimethylcyclohexylamine (C9H19N)",CC1(CC(C)CC(C)C1)N
+1-Methyloctylamine (C9H21N),CCCCCCC(C)N
+Tripropylamine (C9H21N),CCCN(CCC)CCC
+tert-Butylcyclohexylamine (C10H21N),CC(C)(C)NC1CCCCC1
+Diethylcyclohexylamine (C10H21N),CCN(CC)C1CCCCC1
+Decylamine (C10H23N),CCCCCCCCCN
+Cyclohexylamine (C6H13N),C1CCCCC1N
+Dimethyloctylamine (C10H23N),CCCCCCCCNC
+"Dibutylethylenediamine (N,N-Dibutylethylenediamine, 2-Amino-ethyl-dibutylamine, N,N-Dibutyl-1,2-ethanediamine); C10H24N2",CCCCNCCNCCCC
+"N,N,N′,N′-Tetramethyl-1,6-hexanediamine (C10H24N2)",CN(C)CCCCCNC(C)C
+1-Methyldecylamine (C11H25N),CCCCCCCC(C)N
+3-(Dibutylamino)propylamine (C11H26N2),CCCCN(CCCN)CCCC
+Dodecylamine (C12H27N),CCCCCCCCCCCN
+Tributylamine (C12H27N),CCCCN(CCCC)CCCC
+"2,6-Dimethylpiperidine (2,6-Lupetidine); C7H15N",CC1CCCC(C)N1
+"3,3-Dimethylpiperidine (3,3-Lupetidine); C7H15N",CC1(C)CCCNC1
+N-Methylcyclohexylamine; C7H15N,CNC1CCCCC1
+2-Methylcyclohexylamine C7H15N,CC1CCCCC1N
+"N-Methyl-1,3-dimethylbutylamine; C7H17N",CNC(C)CC(C)C
+"1-Methylhexylamine (2-Heptanamine, 2-Aminoheptane); C7H17N",CCCCCC(C)N
+1-Ethylpiperidine (N-Ethylpiperidine); C7H19N,CCN1CCCCC1
+"N,N-Dimethylcyclohexylamine; C8H17N",CN(C)C1CCCCC1
+N-Ethylcyclohexylamine (N-Cyclohexylethylamine); C8H17N,CCNC1CCCCC1  
+"Dibutylamine (N-Butylbutanamine, N-Butyl-1-butanamine); C8H19N",CCCCNCCCC
+Diisobutylamine (bis(2-Methylpropyl)amine); C8H19N,CC(C)CNCC(C)C  
+Di-sec-butylamine (N-(1-Methylpropyl)-2-butanamine); C8H19N,CCC(C)NC(C)CC  
+"N,N-Diisopropylethylamine C8H19N",CCN(C(C)C)C(C)C  
+"1,5-Dimethylhexylamine (2-Amino-6-methylheptane); C8H19N",CC(C)CCCC(C)N  
+2-Ethylhexylamine (2-Ethyl-1-hexylamine); C8H19N,CCCCC(CC)CN  
+"Octylamine (1-Octylamine, 1-Octanamine, 1-Aminooctane); C8H19N",CCCCCCCCN  
+"tert-Octylamine (2-Amino-2,4,4-trimethylpentane, 1,1,3,3-Tetramethylbutylamine); C8H19N",CC(C)(C)CC(C)(C)N  
+1-Propylpiperidine (N-Propylpiperidine); C8H21N,CCCN1CCCCC1  
+"Triallylamine (tris(2-Propenyl)amine, N,N-di-2-Propenyl-2-propen-1-amine); C9H15N",C=CCN(CC=C)CC=C  
+N-Isopropylcyclohexylamine (N-Cyclohexylisopropylamine); C9H19N,CC(C)NC1CCCCC1  
+"3,3,5-Trimethylcyclohexylamine; C9H19N",CC1CC(CC(C1)(C)C)N  
+"1-Methyloctylamine (2-Aminononane, 2-Nonaneamine, 2-Nonylamine); C9H21N",CCCCCCCCNC  
+"Tripropylamine (N,N-Dipropylpropanamine, N,N-Dipropyl-1-propanamine); C9H21N",CCCN(CCC)CCC  
+tert-Butylcyclohexylamine; C10H21N,CC(C)(C)NC1CCCCC1  
+"Diethylcyclohexylamine (N,N-Diethylcyclohexylamine, Cyclohexyldiethylamine); C10H21N",CCN(CC)C1CCCCC1  
+"Decylamine (1-Aminodecane, 1-Decanamine); C10H23N",CCCCCCCCCCN  
+"Dimethyloctylamine (N,N-Dimethyloctylamine, Octyldimethylamine); C10H23N",CCCCCCCCN(C)C  
+"Dibutylethylenediamine (N,N-Dibutylethylenediamine, 2-Amino-ethyl-dibutylamine, N,N-Dibutyl-1,2-ethanediamine);",CCCCNCCNCCCC  
+"N,N,N′,N′-Tetramethyl-1,6-hexanediamine; C10H24N2",CN(C)CCCCCCN(C)C  
+"1-Methyldecylamine (sec-Undecylamine, 2-Aminoundecane, 2-Undecaneamine); C11H25N",CCCCCCCCCC(C)N  
+"3-(Dibutylamino)propylamine (N,N-Dibutyl-1,3-propanediamine, 3-aminopropyldibutylamine); C11H26N2",CCCCN(CCCC)CCCN  
+"Dodecylamine (1-Aminododecane, Laurylamine); C12H27N",CCCCCCCCCCCCN  
+"Tributylamine (Tri-n-butylamine, N,N-Dibutyl-1-butanamine); C12H27N",CCCCN(CCCC)CCCC  
+Triisobutylamine; C12H27N,CC(C)CN(CC(C)C)CC(C)C  
+"Dihexylamine (N,N-Dihexylamine, N-Hexyl-1-hexanamine); C12H27N",CCCCCCNCCCCCC  
