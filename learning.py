@@ -1,6 +1,4 @@
 import random
-import argparse
-import pprint
 import pandas as pd
 from sklearn.base import is_classifier
 import xgboost as xgb
@@ -13,6 +11,7 @@ from sklearn.metrics import (
 )
 import matplotlib.pyplot as plt
 
+from config import config
 from amine_solubility import load_data, load_mutual_solubility_data
 import plotly
 
@@ -60,8 +59,8 @@ selected_features_dual = [
     'Complexity solvent',
     'Undefined atom stereocenter count solvent',
 
-    'Solute Fingerprint',
-    'Solvent Fingerprint',
+    # 'Solute Fingerprint',
+    # 'Solvent Fingerprint',
 ]
 
 
@@ -80,6 +79,7 @@ selected_features_one_compound = [
     'undefined_atom_stereocenter_count',
     'aiw',  # field i added to maybe help with bimodality.
     'smiles',  # file i added to add more structural features.
+               #  Currently only works for ms model.
 ]
 
 target = ['x']
@@ -88,6 +88,8 @@ SELECTED_FEATURES = selected_features_one_compound
 
 
 def pearson_correlation_coefficient(df):
+    # omit the 'FP_' columns
+    df = df.drop(columns=[col for col in df.columns if 'FP_' in col])
     corr_matrix = df.corr()
 
     plt.figure(figsize=(12, 8))
@@ -252,14 +254,14 @@ def print_metrics(model, X_test, y_test):
     print(f"MAE: {mae:.4f}")
     print(f"R2: {r2:.4f}")
 
-def build_model(data, optimize=False, graphs=True):
+def build_model(data):
     X = data.drop(columns=['x'])
     y = data['x']
 
     # Split into training and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    if optimize:
+    if config['optimize']:
         model = train_model_optimized(X_train, y_train)
     else:
         model = train_model_simple(X_train, y_train)
@@ -269,14 +271,14 @@ def build_model(data, optimize=False, graphs=True):
 
     
     print_metrics(model, X_test, y_test)
-    if graphs:
+    if config['graphs']:
         pearson_correlation_coefficient(data)
         plot_predictions(model, X_test, y_test)
         plot_parity(model, X_test, y_test)
         plot_feature_importance(model)
     return model
 
-def predict_some(df, optimize=False):
+def predict_some(df):
     if 'name' in df.keys():
         all_names = set(df.name.unique()) - set('Water')
     else:
@@ -293,7 +295,7 @@ def predict_some(df, optimize=False):
 
     name_not_matches = df[~cond]
     df_train = select_features(name_not_matches)
-    model = build_model(df_train, graphs=True, optimize=optimize)
+    model = build_model(df_train)
 
     df_test_by_name = {}
     for name in names:
@@ -308,8 +310,7 @@ def predict_some(df, optimize=False):
             continue
         df_test_by_name[name] = df_test
 
-    for name in names:
-        df_test = df_test_by_name[name]
+    for name, df_test in df_test_by_name.items():
         y_pred = model.predict(df_test.drop(columns=['x']))
         y_actual = df_test['x']
 
@@ -347,25 +348,25 @@ def predict_some(df, optimize=False):
 
 def main():
     global SELECTED_FEATURES
-    parser = argparse.ArgumentParser(description="")
-    parser.add_argument("--predict", action="store_true", help="Show plots")
-    parser.add_argument("--model", action="store", help="mutual solubility")
-    parser.add_argument("--optimize", action="store_true", help="Run HPO")
-    args = parser.parse_args()
+    print(config)
 
-    if args.model == 'ms':
+    if config['model'] == 'ms':
         df = load_mutual_solubility_data()
         SELECTED_FEATURES = selected_features_one_compound
+
+        if config['smiles'] and 'smiles' not in SELECTED_FEATURES:
+            SELECTED_FEATURES.extend(['smiles'])
+
     else:
         df = load_data()
         # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
         df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
         SELECTED_FEATURES = selected_features_dual
 
-    if args.predict:
-        predict_some(df, args.optimize)
+    if config['predict']:
+        predict_some(df)
     else:
-        build_model(select_features(df), args.optimize)
+        build_model(select_features(df))
 
 
 
