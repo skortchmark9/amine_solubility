@@ -14,7 +14,7 @@ def parse_args():
     parser.add_argument("--predict", action="store_true", help="Show plots")
     parser.add_argument("--graphs", action="store_true", help="Show plots")
     parser.add_argument("--optimize", action="store_true", help="Run HPO")
-    parser.add_argument("--smiles", action="store_true", help="Include smiles features")
+    parser.add_argument("--test_per_amine", action="store_true", help="Test performance of model against each amine")
 
     args = parser.parse_args()
     config.update(vars(args))  # Store parsed arguments in config dict

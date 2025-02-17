@@ -1,9 +1,7 @@
 import random
 import argparse
-import pprint
 import numpy as np
 import pandas as pd
-from sklearn.base import is_classifier
 import xgboost as xgb
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import (
@@ -13,10 +11,8 @@ from sklearn.metrics import (
     r2_score
 )
 import matplotlib.pyplot as plt
-from sklearn.base import ClassifierMixin
-from sklearn_compat.utils import get_tags
 
-from amine_solubility import load_data, load_mutual_solubility_data
+from amine_solubility import load_data
 import plotly
 
 import seaborn as sns

@@ -1,7 +1,9 @@
+import json
 import random
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+from sklearn.metrics import make_scorer
 from catboost import CatBoostRegressor
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import (
@@ -130,35 +132,45 @@ def select_features(df):
 def train_model_simple(X_train, y_train):    
     """Train and evaluate an XGBoost model"""
 
-    # From testing 2/3/2021
-    optimized_hyperparameters = {
-        "random_state": 42,
-        "colsample_bytree": 0.8,
-        "learning_rate": 0.01,
-        "max_depth": 3,
-        "n_estimators": 400,
-        "subsample": 0.8,
-    }
-    # From stefano
-    optimized_hyperparameters = {
-        'learning_rate': 0.01,
-        'n_estimators': 400,
-        'max_depth': 4,
-        'subsample': 0.8,
+    # From testing 2/17
+    xgb_optimized_hyperparameters = {
         'colsample_bytree': 0.8,
-        'random_state': 42
+        'learning_rate': 0.1,
+        'max_depth': 5,
+        'n_estimators': 400,
+        'random_state': 42,
+        'subsample': 0.8,
+    }
+
+    # 2/17
+    catboost_hyperparameters = {
+        'bagging_temperature': 0.7,
+        'depth': 5,
+        'eta': 0.1,
+        'iterations': 400,
+        'random_state': 42,
+        'rsm': 0.9,
     }
     if config['model'] == 'catboost':
         print('using catboost')
-        model = CatBoostRegressor(verbose=False)
+        model = CatBoostRegressor(verbose=False, **catboost_hyperparameters)
     elif config['model'] == 'xgboost':
         print('using xgboost')
         model = xgb.XGBRegressor(
-            **optimized_hyperparameters
+            **xgb_optimized_hyperparameters
         )
     
     model.fit(X_train, y_train)
     return model
+
+def pseudohuber_loss(y_true, y_pred, delta=1.0):
+    """Computes Pseudo-Huber loss"""
+    residual = y_true - y_pred
+    return np.mean(delta**2 * (np.sqrt(1 + (residual / delta) ** 2) - 1))
+
+# Convert the function into a scorer for GridSearchCV
+pseudohuber_scorer = make_scorer(pseudohuber_loss, greater_is_better=False)  # Lower loss is better
+
 
 
 def train_model_optimized(X_train, y_train):
@@ -171,6 +183,7 @@ def train_model_optimized(X_train, y_train):
         'max_depth': [3, 4, 5],
         'subsample': [0.7, 0.8, 0.9],
         'colsample_bytree': [0.6, 0.7, 0.8],
+        'objective': ['reg:pseudohubererror'],
     }
 
     catboost_param_grid = {
@@ -194,7 +207,7 @@ def train_model_optimized(X_train, y_train):
     grid_search = GridSearchCV(
         estimator=model,
         param_grid=param_grid,
-        scoring='neg_mean_squared_error',
+        scoring=pseudohuber_scorer,  # Use the custom loss function
         cv=10,
         n_jobs=-1
     )
@@ -315,14 +328,15 @@ def build_model(data):
         plot_feature_importance(model)
     return model
 
-def predict_some(df):
+def predict_some(df, names=None):
     if 'name' in df.keys():
         all_names = set(df.name.unique()) - set('Water')
     else:
         all_names = set(df['Solubility of:'].unique()) - set('Water')
 
-    names = random.sample(list(all_names), 5)
-    names += ['Diisopropylamine (C6H15N)', 'Dipropylamine (C6H15N)']
+    if names is None:
+        names = random.sample(list(all_names), 5)
+        names += ['Diisopropylamine (C6H15N)', 'Dipropylamine (C6H15N)']
 
     # partition the df into two parts depending on a condition
     if 'name' in df.keys():
@@ -348,40 +362,61 @@ def predict_some(df):
         df_test_by_name[name] = df_test
 
     for name, df_test in df_test_by_name.items():
-        y_pred = model.predict(df_test.drop(columns=['x']))
-        y_actual = df_test['x']
+        yield model, name, df_test
 
-        # compare the prediction and actual values w/r2
-        r2 = r2_score(y_actual, y_pred)
 
-        # Plot the prediction and actual against the temperature
-        # using plotly
-        fig = plotly.graph_objs.Figure()
-        trace_pred = plotly.graph_objs.Scatter(
-            x=y_pred,
-            y=df_test['T (K)'],
-            mode='markers',
-            name='Predicted',
-            marker=dict(
-                color='blue'
-            )
+def plot_prediction(model, name, df):
+    y_pred = model.predict(df.drop(columns=['x']))
+    y_actual = df['x']
+
+    # compare the prediction and actual values w/r2
+    r2 = r2_score(y_actual, y_pred)
+
+    # Plot the prediction and actual against the temperature
+    # using plotly
+    fig = plotly.graph_objs.Figure()
+    trace_pred = plotly.graph_objs.Scatter(
+        x=y_pred,
+        y=df['T (K)'],
+        mode='markers',
+        name='Predicted',
+        marker=dict(
+            color='blue'
         )
-        trace_actual = plotly.graph_objs.Scatter(
-            x=y_actual,
-            y=df_test['T (K)'],
-            mode='markers',
-            name='Actual',
-            marker=dict(
-                color='red'
-            )
+    )
+    trace_actual = plotly.graph_objs.Scatter(
+        x=y_actual,
+        y=df['T (K)'],
+        mode='markers',
+        name='Actual',
+        marker=dict(
+            color='red'
         )
-        fig.layout.title = name + (' (R2: %.2f)' % r2)
-        fig.update_xaxes(range=[0, 1])
-        fig.update_yaxes(range=[250, 510])
-        fig.add_trace(trace_pred)
-        fig.add_trace(trace_actual)
-        fig.show()
+    )
+    fig.layout.title = name + (' (R2: %.2f)' % r2)
+    fig.update_xaxes(range=[0, 1])
+    fig.update_yaxes(range=[250, 510])
+    fig.add_trace(trace_pred)
+    fig.add_trace(trace_actual)
+    fig.show()
 
+def test_per_amine(df):
+    names = set()
+    for key in ['name', 'Solubility of:', 'In:']:
+        if key in df.keys():
+            names |= set(df[key].unique())
+
+    dfs = []
+    for name in names:
+        for model, name, test_df in predict_some(df, [name]):
+            y_pred = model.predict(test_df.drop(columns=['x']))
+            y_actual = test_df['x']
+            r2 = r2_score(y_actual, y_pred)
+            dfs.append(pd.DataFrame({'name': name, 'r2': r2, 'y_pred': y_pred.tolist(), 'y_actual': y_actual.tolist() }))
+
+    out = pd.concat(dfs)
+    out.to_csv('data/per_amine.csv', index=False)
+    return out
 
 def main():
     global SELECTED_FEATURES
@@ -400,9 +435,15 @@ def main():
         SELECTED_FEATURES = selected_features_dual
 
     if config['predict']:
-        predict_some(df)
-    else:
-        build_model(select_features(df))
+        for model, name, df in predict_some(df):
+            plot_prediction(model, name, df)
+        return
+
+    if config['test_per_amine']:
+        test_per_amine(df)
+        return
+
+    build_model(select_features(df))
 
 
 
