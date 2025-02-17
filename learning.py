@@ -12,8 +12,6 @@ from sklearn.metrics import (
     r2_score
 )
 import matplotlib.pyplot as plt
-from sklearn.base import ClassifierMixin
-from sklearn_compat.utils import get_tags
 
 from amine_solubility import load_data, load_mutual_solubility_data
 import plotly
@@ -21,8 +19,7 @@ import plotly
 import seaborn as sns
 import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-from rdkit import Chem
-from rdkit.Chem import AllChem
+from smiles_fingerprints import create_morgan_generator
 
 selected_features_orig = [
     'T (K)',
@@ -82,6 +79,7 @@ selected_features_one_compound = [
     'complexity',
     'undefined_atom_stereocenter_count',
     'aiw',  # field i added to maybe help with bimodality.
+    'smiles',  # file i added to add more structural features.
 ]
 
 target = ['x']
@@ -90,7 +88,6 @@ SELECTED_FEATURES = selected_features_one_compound
 
 
 def pearson_correlation_coefficient(df):
-    df = df[SELECTED_FEATURES].dropna()
     corr_matrix = df.corr()
 
     plt.figure(figsize=(12, 8))
@@ -100,8 +97,6 @@ def pearson_correlation_coefficient(df):
 
 
 def vif(df):
-    df = df[SELECTED_FEATURES].dropna()
-
     vif_data = pd.DataFrame()
     vif_data["feature"] = df.columns
     vif_data["VIF"] = [variance_inflation_factor(df.values, i) for i in range(len(df.columns))]
@@ -117,6 +112,16 @@ def select_features(df):
     print("Data size:", df.shape)
 
     df = df[SELECTED_FEATURES + target].dropna()
+
+
+    get_fingerprint = create_morgan_generator(2, 100)
+    if 'smiles' in SELECTED_FEATURES:
+        fps = df['smiles'].apply(get_fingerprint)
+        fps_df = pd.DataFrame(fps.apply(pd.Series).fillna(0))  # Convert sparse to fixed matrix
+        fps_df.columns = [f"FP_{i}" for i in range(len(fps_df.columns))]
+        df = pd.concat([df, fps_df], axis=1)
+        df = df.drop(columns=['smiles'])
+
     return df
 
 def train_model_simple(X_train, y_train):    
@@ -226,7 +231,10 @@ def plot_parity(model, X_test, y_test):
     plt.show()
 
 def plot_feature_importance(model):
-    xgb.plot_importance(model, importance_type='weight', show_values=False)
+    xgb.plot_importance(model,
+                        importance_type='weight',
+                        show_values=False,
+                        max_num_features=20,)
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
@@ -247,6 +255,7 @@ def print_metrics(model, X_test, y_test):
 def build_model(data, optimize=False, graphs=True):
     X = data.drop(columns=['x'])
     y = data['x']
+
     # Split into training and test sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
@@ -267,69 +276,73 @@ def build_model(data, optimize=False, graphs=True):
         plot_feature_importance(model)
     return model
 
-def predict_one(df, name):
-    # partition the df into two parts depending on a condition
-    if 'name' in df.keys():
-        cond = (df['name'] == name)
-    else:
-        cond = (df['Solubility of:'] == name) | (df['In:'] == name)
-    name_matches = df[cond]
-    name_not_matches = df[~cond]
-
-    df_test = select_features(name_matches)
-    if df_test.empty:
-        raise ValueError(f"No data for {name}")
-    df_train = select_features(name_not_matches)
-
-    model = build_model(df_train, graphs=False, optimize=True)
-    y_pred = model.predict(df_test.drop(columns=['x']))
-    y_actual = df_test['x']
-
-    # compare the prediction and actual values w/r2
-    r2 = r2_score(y_actual, y_pred)
-
-
-
-    # Plot the prediction and actual against the temperature
-    # using plotly
-    fig = plotly.graph_objs.Figure()
-    trace_pred = plotly.graph_objs.Scatter(
-        x=y_pred,
-        y=df_test['T (K)'],
-        mode='markers',
-        name='Predicted',
-        marker=dict(
-            color='blue'
-        )
-    )
-    trace_actual = plotly.graph_objs.Scatter(
-        x=y_actual,
-        y=df_test['T (K)'],
-        mode='markers',
-        name='Actual',
-        marker=dict(
-            color='red'
-        )
-    )
-    fig.layout.title = name + (' (R2: %.2f)' % r2)
-    fig.update_xaxes(range=[0, 1])
-    fig.add_trace(trace_pred)
-    fig.add_trace(trace_actual)
-    fig.show()
-
-def predict_some(df):
+def predict_some(df, optimize=False):
     if 'name' in df.keys():
         all_names = set(df.name.unique()) - set('Water')
     else:
         all_names = set(df['Solubility of:'].unique()) - set('Water')
 
-    
     names = random.sample(list(all_names), 5)
-    names += ['Diisopropylamine (C6H15N)', 'Dipropylamine\xa0(C6H15N)']
+    names += ['Diisopropylamine (C6H15N)', 'Dipropylamine (C6H15N)']
+
+    # partition the df into two parts depending on a condition
+    if 'name' in df.keys():
+        cond = (df['name'].isin(names))
+    else:
+        cond = (df['Solubility of:'].isin(names)) | (df['In:'].isin(names))
+
+    name_not_matches = df[~cond]
+    df_train = select_features(name_not_matches)
+    model = build_model(df_train, graphs=True, optimize=optimize)
+
+    df_test_by_name = {}
+    for name in names:
+        if 'name' in df.keys():
+            cond = (df['name'] == name)
+        else:
+            cond = (df['Solubility of:'] == name) | (df['In:'] == name)
+
+        df_test = select_features(df[cond])
+        if df_test.empty:
+            print(f'No test points for {name}')
+            continue
+        df_test_by_name[name] = df_test
 
     for name in names:
-        predict_one(df, name)
+        df_test = df_test_by_name[name]
+        y_pred = model.predict(df_test.drop(columns=['x']))
+        y_actual = df_test['x']
 
+        # compare the prediction and actual values w/r2
+        r2 = r2_score(y_actual, y_pred)
+
+        # Plot the prediction and actual against the temperature
+        # using plotly
+        fig = plotly.graph_objs.Figure()
+        trace_pred = plotly.graph_objs.Scatter(
+            x=y_pred,
+            y=df_test['T (K)'],
+            mode='markers',
+            name='Predicted',
+            marker=dict(
+                color='blue'
+            )
+        )
+        trace_actual = plotly.graph_objs.Scatter(
+            x=y_actual,
+            y=df_test['T (K)'],
+            mode='markers',
+            name='Actual',
+            marker=dict(
+                color='red'
+            )
+        )
+        fig.layout.title = name + (' (R2: %.2f)' % r2)
+        fig.update_xaxes(range=[0, 1])
+        fig.update_yaxes(range=[250, 510])
+        fig.add_trace(trace_pred)
+        fig.add_trace(trace_actual)
+        fig.show()
 
 
 def main():
@@ -350,7 +363,7 @@ def main():
         SELECTED_FEATURES = selected_features_dual
 
     if args.predict:
-        predict_some(df)
+        predict_some(df, args.optimize)
     else:
         build_model(select_features(df), args.optimize)
 

@@ -85,6 +85,11 @@ raw_columns = [
     'Undefined atom stereocenter count solvent'
 ]
 
+synthetic_columns = [
+    'Solute SMILES',
+    'Solvent SMILES',
+]
+
 CHNO = namedtuple('CHNO', ['C', 'H', 'N', 'O'])
 water = CHNO(0, 2, 0, 1)
 
@@ -107,6 +112,7 @@ TempSolubility = namedtuple('point', ['temperature', 'solubility', 'reference'])
 @dataclass(kw_only=True, frozen=True)
 class Compound:
     name: str
+    smiles: str
     chno: CHNO
     molecular_weight_gpm: float
     xlogp3_aa: float
@@ -153,6 +159,7 @@ def compound_info(compound, reference=None):
 def row_to_solvent(row):
     solvent = Compound(
         name=row['In:'],
+        smiles=row['Solvent SMILES'],
         chno=CHNO(row['C in solvent'], row['H in solvent'], row['N in solvent'], row['O in solvent']),
         molecular_weight_gpm=row['Molecular weight solvent (g/mol)'],
         xlogp3_aa=row['XLogP3-AA solvent'],
@@ -171,6 +178,7 @@ def row_to_solvent(row):
 def row_to_solute(row):
     solute = Compound(
         name=row['Solubility of:'],
+        smiles=row['Solute SMILES'],
         chno=CHNO(row['C in solute'], row['H in solute'], row['N in solute'], row['O in solute']),
         molecular_weight_gpm=row['Molecular weight solute (g/mol)'],
         xlogp3_aa=row['XLogP3-AA solute'],
@@ -237,7 +245,7 @@ def load_data():
     
 
 
-    filter_smoothing = False
+    filter_smoothing = True
     if filter_smoothing:
         # Step 1: Identify combinations that have SMOOTHED data
         has_smoothed = df.groupby(['Solubility of:', 'In:'])['Experiment Ref'].transform(
