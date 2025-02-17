@@ -1,4 +1,6 @@
 .DS_STORE
 papers
 .venv
+venv*
 __pycache__
+catboost_info

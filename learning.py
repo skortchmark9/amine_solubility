@@ -1,7 +1,8 @@
 import random
+import numpy as np
 import pandas as pd
-from sklearn.base import is_classifier
 import xgboost as xgb
+from catboost import CatBoostRegressor
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import (
     root_mean_squared_error,
@@ -78,7 +79,7 @@ selected_features_one_compound = [
     'complexity',
     'undefined_atom_stereocenter_count',
     'aiw',  # field i added to maybe help with bimodality.
-    'smiles',  # file i added to add more structural features.
+#    'smiles',  # file i added to add more structural features.
                #  Currently only works for ms model.
 ]
 
@@ -147,9 +148,14 @@ def train_model_simple(X_train, y_train):
         'colsample_bytree': 0.8,
         'random_state': 42
     }
-    model = xgb.XGBRegressor(
-        **optimized_hyperparameters
-    )
+    if config['model'] == 'catboost':
+        print('using catboost')
+        model = CatBoostRegressor(verbose=False)
+    elif config['model'] == 'xgboost':
+        print('using xgboost')
+        model = xgb.XGBRegressor(
+            **optimized_hyperparameters
+        )
     
     model.fit(X_train, y_train)
     return model
@@ -158,21 +164,35 @@ def train_model_simple(X_train, y_train):
 def train_model_optimized(X_train, y_train):
     print("Optimizing hyperparameters...")
 
-    param_grid = {
+    xgb_param_grid = {
         "random_state": [42],
         'learning_rate': [0.001, 0.01, 0.1],
         'n_estimators': [200, 300, 400],
         'max_depth': [3, 4, 5],
         'subsample': [0.7, 0.8, 0.9],
         'colsample_bytree': [0.6, 0.7, 0.8],
-        # 'objective': 'reg:quantileerror',
-        # 'alpha': 0.5,
     }
 
-    xgb_model = xgb.XGBRegressor(**param_grid)
+    catboost_param_grid = {
+        "random_state": [42],
+        'eta': [0.001, 0.01, 0.1],  # equivalent to learning rate
+        'iterations': [200, 300, 400],  # equivalent to n_estimators
+        'depth': [3, 4, 5],  # equivalent to max depth
+        'bagging_temperature': [0.7, 0.8, 0.9], # equivalent to subsample
+        'rsm': [0.7, 0.8, 0.9],  # equivalent to colsample_bytree
+    }
+
+    if config['model'] == 'catboost':
+        print('Using catboost...')
+        param_grid = catboost_param_grid
+        model = CatBoostRegressor(verbose=0, **param_grid)
+    elif config['model'] == 'xgboost':
+        print('Using xgboost...')
+        param_grid = xgb_param_grid
+        model = xgb.XGBRegressor(**param_grid)
 
     grid_search = GridSearchCV(
-        estimator=xgb_model,
+        estimator=model,
         param_grid=param_grid,
         scoring='neg_mean_squared_error',
         cv=10,
@@ -233,13 +253,28 @@ def plot_parity(model, X_test, y_test):
     plt.show()
 
 def plot_feature_importance(model):
-    xgb.plot_importance(model,
-                        importance_type='weight',
-                        show_values=False,
-                        max_num_features=20,)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.show()
+    if config['model'] == 'catboost':
+        importances = model.get_feature_importance()  # Loss-based importance
+        feature_names = model.feature_names
+        indices = np.argsort(importances)[::-1]  # Sort in descending order
+
+        plt.figure(figsize=(10, 6))
+        plt.barh(range(20), importances[indices][:20], align="center")
+        plt.yticks(range(20), np.array(feature_names)[indices[:20]], rotation=0)
+        plt.gca().invert_yaxis()  # Flip the y-axis
+        plt.ylabel("Feature")
+        plt.xlabel("Importance")
+        plt.title("CatBoost Feature Importance")
+        plt.tight_layout()
+        plt.show()
+    else:
+        xgb.plot_importance(model,
+                            importance_type='weight',
+                            show_values=False,
+                            max_num_features=20,)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.show()
 
 
 def print_metrics(model, X_test, y_test):
@@ -267,8 +302,10 @@ def build_model(data):
         model = train_model_simple(X_train, y_train)
 
     feature_names = list(X.columns)
-    model.get_booster().feature_names = feature_names
-
+    if config['model'] == 'xgboost':
+        model.get_booster().feature_names = feature_names
+    elif config['model'] == 'catboost':
+        model.feature_names = feature_names
     
     print_metrics(model, X_test, y_test)
     if config['graphs']:
@@ -350,13 +387,12 @@ def main():
     global SELECTED_FEATURES
     print(config)
 
-    if config['model'] == 'ms':
+    if config['features'] == 'ms':
         df = load_mutual_solubility_data()
         SELECTED_FEATURES = selected_features_one_compound
-
-        if config['smiles'] and 'smiles' not in SELECTED_FEATURES:
-            SELECTED_FEATURES.extend(['smiles'])
-
+    elif config['features'] == 'ms-smiles':
+        df = load_mutual_solubility_data()
+        SELECTED_FEATURES = selected_features_one_compound + ['smiles']
     else:
         df = load_data()
         # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
