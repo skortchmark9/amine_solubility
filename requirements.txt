@@ -8,3 +8,4 @@ xgboost  # requires brew install libomp
 matplotlib
 seaborn
 statsmodels
+rdkit

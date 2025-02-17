@@ -36,6 +36,7 @@ import pandas as pd
 from collections import namedtuple, defaultdict
 import plotly
 from plotly.subplots import make_subplots
+from smiles_fingerprints import load_smiles
 
 # "Solubility of <solute> in <solvent>"
 # U before V!
@@ -261,14 +262,6 @@ def load_data():
 
     return df
 
-def load_smiles():
-    """Simplified Molecular Input Line Entry System (SMILES)
-    codes for each compound."""
-    df = pd.read_csv('data/amine_smiles.csv')
-    smiles_map = {}
-    for i, row in df.iterrows():
-        smiles_map[row['Compound Name']] = row['SMILES Code']
-    return smiles_map
 
 def load_mutual_solubility_data():
     df = load_data()

@@ -21,7 +21,8 @@ import plotly
 import seaborn as sns
 import matplotlib.pyplot as plt
 from statsmodels.stats.outliers_influence import variance_inflation_factor
-
+from rdkit import Chem
+from rdkit.Chem import AllChem
 
 selected_features_orig = [
     'T (K)',
@@ -61,6 +62,9 @@ selected_features_dual = [
     'Topological polar surface area solvent (Å²)',
     'Complexity solvent',
     'Undefined atom stereocenter count solvent',
+
+    'Solute Fingerprint',
+    'Solvent Fingerprint',
 ]
 
 
