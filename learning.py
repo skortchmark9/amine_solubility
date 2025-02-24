@@ -111,6 +111,40 @@ def vif(df):
 
     print(vif_data)
 
+def normalize_temperature(col):
+    min = 270.15
+    max = 548.15
+    return (col - min) / (max - min)
+
+def denormalize_temperature(col):
+    min = 270.15
+    max = 548.15
+    return col * (max - min) + min
+
+def normalize_features(df):
+    """Normalize features using min-max scaling"""
+    if df.empty:
+        return df
+    df = df.copy()
+    for col in df.columns:
+        if col == 'chno':
+            ## TODO: deal with this when selected
+            continue
+        if col == 'T (K)':
+            df[col] = normalize_temperature(df[col])
+            continue
+        if col == 'x':
+            continue
+        # Omit bools
+        if (df[col].iloc[0]) in (True, False):
+            continue
+
+        # Omit strings
+        if isinstance(df[col].iloc[0], str):
+            continue
+
+        df[col] = (df[col] - df[col].min()) / (df[col].max() - df[col].min())
+    return df
 
 def select_features(df):
     print("Selecting features...")
@@ -227,14 +261,17 @@ def train_model_optimized(X_train, y_train):
     return best_model
 
 
-def plot_predictions(model, X_test, y_test):
+def plot_all_predictions(model, X_test, y_test):
     y_pred = model.predict(X_test)
     rmse = root_mean_squared_error(y_test, y_pred)
 
+    y_pred = maybe_unlog(y_pred)
+    y_test = maybe_unlog(y_test)
+
     # Plot
     plt.figure(figsize=(8, 6))
-    plt.scatter(X_test['T (K)'], y_test, label='True', alpha=0.6, edgecolor='k', s=40)
-    plt.scatter(X_test['T (K)'], y_pred, label='Predicted', alpha=0.6, edgecolor='k', s=40)
+    plt.scatter(denormalize_temperature(X_test['T (K)']), y_test, label='True', alpha=0.6, edgecolor='k', s=40)
+    plt.scatter(denormalize_temperature(X_test['T (K)']), y_pred, label='Predicted', alpha=0.6, edgecolor='k', s=40)
     plt.xlabel('Temperature (K)', fontsize=12)
     plt.ylabel('Solubility', fontsize=12)
     plt.title('True vs Predicted Solubility', fontsize=14)
@@ -327,7 +364,7 @@ def build_model(data):
     if config['graphs']:
         shap_analysis(model, X_test)
         pearson_correlation_coefficient(data)
-        plot_predictions(model, X_test, y_test)
+        plot_all_predictions(model, X_test, y_test)
         plot_parity(model, X_test, y_test)
         plot_feature_importance(model)
     return model
@@ -374,11 +411,15 @@ def predict_some(df, names=None):
     for name, df_test in df_test_by_name.items():
         yield model, name, df_test
 
-def unlog(x):
+def maybe_unlog(x):
+    if not config['log_scale']:
+        return x
     out = np.exp(x) - 1e-6
     return out
 
-def log(x):
+def maybe_log(x):
+    if not config['log_scale']:
+        return x
     # Take the natural log of x + epsilon to avoid ln(0)
     return np.log(x + 1e-6)
 
@@ -389,12 +430,15 @@ def plot_prediction(model, name, df):
     # compare the prediction and actual values w/r2
     r2 = r2_score(y_actual, y_pred)
 
+    y_pred = maybe_unlog(y_pred)
+    y_actual = maybe_unlog(y_actual)
+
     # Plot the prediction and actual against the temperature
     # using plotly
     fig = plotly.graph_objs.Figure()
     trace_pred = plotly.graph_objs.Scatter(
         x=y_pred,
-        y=df['T (K)'],
+        y=denormalize_temperature(df['T (K)']),
         mode='markers',
         name='Predicted',
         marker=dict(
@@ -403,7 +447,7 @@ def plot_prediction(model, name, df):
     )
     trace_actual = plotly.graph_objs.Scatter(
         x=y_actual,
-        y=df['T (K)'],
+        y=denormalize_temperature(df['T (K)']),
         mode='markers',
         name='Actual',
         marker=dict(
@@ -430,10 +474,14 @@ def test_per_amine(df):
             y_actual = test_df['x']
             temp = test_df['T (K)']
             r2 = r2_score(y_actual, y_pred)
+
+            y_pred = maybe_unlog(y_pred)
+            y_actual = maybe_unlog(y_actual)
+
             dfs.append(pd.DataFrame({
                 'name': name,
                 'r2': r2,
-                'T (K)': temp.tolist(),
+                'T (K)': denormalize_temperature(temp.tolist()),
                 'y_pred': y_pred.tolist(), 
                 'y_actual': y_actual.tolist()
             }))
@@ -457,6 +505,9 @@ def main():
         # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
         df.loc[df['Solubility of:'] == 'Water', 'x'] = 1 - df['x']
         SELECTED_FEATURES = selected_features_dual
+
+    df['x'] = maybe_log(df['x'])
+    df = normalize_features(df)
 
     if config['predict']:
         for model, name, df in predict_some(df):

@@ -18,6 +18,7 @@ def parse_args():
 
     args = parser.parse_args()
     config.update(vars(args))  # Store parsed arguments in config dict
+    config['log_scale'] = True
 
 
 parse_args()  # Automatically parse when imported
