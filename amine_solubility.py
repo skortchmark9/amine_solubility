@@ -208,6 +208,14 @@ def strip_bad_rows(df):
     df = df[df['Solubility of:'] != bad_solute]
     df = df[df['In:'] != bad_solute]
 
+    bad_solute = 'Dihexylamine (N,N-Dihexylamine, N-Hexyl-1-hexanamine); C12H27N'
+    df = df[df['Solubility of:'] != bad_solute]
+    df = df[df['In:'] != bad_solute]
+
+    bad_solute = 'Triisobutylamine; C12H27N'
+    df = df[df['Solubility of:'] != bad_solute]
+    df = df[df['In:'] != bad_solute]
+
     return df
 
 def strip_single_experiment_rows(df):

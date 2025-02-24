@@ -12,11 +12,14 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score
 )
+import shap
 import matplotlib.pyplot as plt
 
 from config import config
 from amine_solubility import load_data, load_mutual_solubility_data
 import plotly
+import plotly.graph_objs as go
+
 
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -183,7 +186,7 @@ def train_model_optimized(X_train, y_train):
         'max_depth': [3, 4, 5],
         'subsample': [0.7, 0.8, 0.9],
         'colsample_bytree': [0.6, 0.7, 0.8],
-        'objective': ['reg:pseudohubererror'],
+        # 'objective': ['reg:pseudohubererror'],
     }
 
     catboost_param_grid = {
@@ -207,7 +210,7 @@ def train_model_optimized(X_train, y_train):
     grid_search = GridSearchCV(
         estimator=model,
         param_grid=param_grid,
-        scoring=pseudohuber_scorer,  # Use the custom loss function
+        # scoring=pseudohuber_scorer,  # Use the custom loss function
         cv=10,
         n_jobs=-1
     )
@@ -322,11 +325,18 @@ def build_model(data):
     
     print_metrics(model, X_test, y_test)
     if config['graphs']:
+        shap_analysis(model, X_test)
         pearson_correlation_coefficient(data)
         plot_predictions(model, X_test, y_test)
         plot_parity(model, X_test, y_test)
         plot_feature_importance(model)
     return model
+
+def shap_analysis(model, X_test):
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_test)
+    shap.summary_plot(shap_values, X_test)
+    shap.force_plot(explainer.expected_value, shap_values[0, :], X_test.iloc[0, :])
 
 def predict_some(df, names=None):
     if 'name' in df.keys():
@@ -364,6 +374,13 @@ def predict_some(df, names=None):
     for name, df_test in df_test_by_name.items():
         yield model, name, df_test
 
+def unlog(x):
+    out = np.exp(x) - 1e-6
+    return out
+
+def log(x):
+    # Take the natural log of x + epsilon to avoid ln(0)
+    return np.log(x + 1e-6)
 
 def plot_prediction(model, name, df):
     y_pred = model.predict(df.drop(columns=['x']))
@@ -411,8 +428,15 @@ def test_per_amine(df):
         for model, name, test_df in predict_some(df, [name]):
             y_pred = model.predict(test_df.drop(columns=['x']))
             y_actual = test_df['x']
+            temp = test_df['T (K)']
             r2 = r2_score(y_actual, y_pred)
-            dfs.append(pd.DataFrame({'name': name, 'r2': r2, 'y_pred': y_pred.tolist(), 'y_actual': y_actual.tolist() }))
+            dfs.append(pd.DataFrame({
+                'name': name,
+                'r2': r2,
+                'T (K)': temp.tolist(),
+                'y_pred': y_pred.tolist(), 
+                'y_actual': y_actual.tolist()
+            }))
 
     out = pd.concat(dfs)
     out.to_csv('data/per_amine.csv', index=False)
