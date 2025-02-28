@@ -30,6 +30,8 @@ Unique property values:
 Samples to features:
     1986 : 120
 """
+import numpy as np
+import re
 import argparse
 from dataclasses import dataclass, fields, asdict
 import pandas as pd
@@ -37,6 +39,8 @@ from collections import namedtuple, defaultdict
 import plotly
 from plotly.subplots import make_subplots
 from smiles_fingerprints import load_smiles
+
+pd.set_option('future.no_silent_downcasting', True)
 
 # "Solubility of <solute> in <solvent>"
 # U before V!
@@ -129,9 +133,12 @@ class Compound:
     def __str__(self):
         """Format the compound as a string based on chno"""
         name = self.name
-        ## Remove the part in parenthesis
-        if '(' in name:
-            name = name[:name.index('(')]
+
+        while re.search(r'\([^()]*\)', name):
+            name = re.sub(r'\([^()]*\)', '', name)
+        name = name.split(';')[0]
+        name = name.strip()
+
         return name
     
     def __repr__(self):
@@ -160,7 +167,12 @@ def row_to_solvent(row):
     solvent = Compound(
         name=row['In:'],
         smiles=row['Solvent SMILES'],
-        chno=CHNO(row['C in solvent'], row['H in solvent'], row['N in solvent'], row['O in solvent']),
+        chno=CHNO(
+            int(row['C in solvent']),
+            int(row['H in solvent']),
+            int(row['N in solvent']),
+            int(row['O in solvent']),
+        ),
         molecular_weight_gpm=row['Molecular weight solvent (g/mol)'],
         xlogp3_aa=row['XLogP3-AA solvent'],
         hydrogen_bond_donor_count=row['Hydrogen bond donor count solvent'],
@@ -179,7 +191,12 @@ def row_to_solute(row):
     solute = Compound(
         name=row['Solubility of:'],
         smiles=row['Solute SMILES'],
-        chno=CHNO(row['C in solute'], row['H in solute'], row['N in solute'], row['O in solute']),
+        chno=CHNO(
+            int(row['C in solute']),
+            int(row['H in solute']),
+            int(row['N in solute']),
+            int(row['O in solute']),
+        ),
         molecular_weight_gpm=row['Molecular weight solute (g/mol)'],
         xlogp3_aa=row['XLogP3-AA solute'],
         hydrogen_bond_donor_count=row['Hydrogen bond donor count solute'],
@@ -235,6 +252,10 @@ def fix_commas(x):
         return float(str(x).replace(',', '.'))
     return x
 
+def strip_outlier_temperatures(df):
+    """Remove rows with temperatures outside the range of 273-373 K"""
+    return df[(df['T (K)'] >= 273) & (df['T (K)'] <= 373)]
+
 def load_data():
     # Read the Excel file
     path = 'data/Solubility data C4-C24.xlsx'
@@ -246,14 +267,20 @@ def load_data():
         },
     )
 
+    if 'Unnamed: 0' in df.columns:
+        del df['Unnamed: 0']
+
     df = strip_bad_rows(df)
     df = strip_repeated_value_cols(df)
     df = strip_single_experiment_rows(df)
     df = remove_nbsp(df)
-    
+    df = df.drop_duplicates()
+
+    # Remove rows with <3 data points
+    df = df.groupby(['Solubility of:', 'In:']).filter(lambda x: len(x) > 2)
 
 
-    filter_smoothing = True
+    filter_smoothing = False
     if filter_smoothing:
         # Step 1: Identify combinations that have SMOOTHED data
         has_smoothed = df.groupby(['Solubility of:', 'In:'])['Experiment Ref'].transform(
@@ -270,6 +297,9 @@ def load_data():
 
     # Rename columns with brackets to parens to avoid issues with XGBoost
     df.rename(columns=lambda col: col.replace('[', '(').replace(']', ')'), inplace=True)
+
+    # df = strip_outlier_temperatures(df)
+
 
     # Add SMILES codes for each compound
     smiles_map = load_smiles()
@@ -308,7 +338,18 @@ def get_experiments(df):
         reference = row['Experiment Ref']
         experiments[combination].append(TempSolubility(temperature, solubility, reference))
 
-    return experiments
+    def sort_by_mol_weight(x):
+        if x.solute.chno == water:
+            return x.solvent.molecular_weight_gpm
+        else:
+            return x.solute.molecular_weight_gpm
+
+    keys = sorted(experiments.keys(), key=sort_by_mol_weight)
+    out = {}
+    for key in keys:
+        out[key] = experiments[key]
+
+    return out
 
 def get_mutual_solubility(experiments):
     d = defaultdict(lambda: {
