@@ -11,3 +11,4 @@ statsmodels
 rdkit
 catboost  # requires brew install rust
 shap
+pdfplumber
