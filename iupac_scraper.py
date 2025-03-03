@@ -4,12 +4,12 @@ import pandas as pd
 
 sources = [
     "papers/c4-c6 amines.pdf",
-    # "papers/c7-c24 amines.pdf",
+    "papers/c7-c24 amines.pdf",
     # "papers/non-aliphatic amines.pdf",
 ]
 
 def load():
-    return pdfplumber.open(pdf_path)
+    return pdfplumber.open(sources[0])
 
 
 def extract_tables_with_preceding_text_from_page(page):
@@ -102,36 +102,6 @@ def extract_tables_with_preceding_text_from_page(page, previous_page=None):
     return tables
 
 
-
-# def extract_tables_with_preceding_text(pdf):
-#     """Extract tables from the given PDF file page by page, handling multiple tables per page and merging tables across pages when necessary."""
-#     all_tables = []
-#     previous_table = None
-    
-#     for page in pdf.pages:
-#         tables = extract_tables_with_preceding_text_from_page(page)
-        
-#         for table in tables:
-
-#             # Continuation of previous table
-#             if previous_table and len(table["table"]) > 0:
-#                 # Check if table starts without headers (i.e., appears to be a continuation)
-#                 if all(cell.isdigit() or cell.replace('.', '', 1).isdigit() for cell in table["table"][0] if cell):
-#                     previous_table["table"].extend(table["table"])  # Append to previous
-#                 else:
-#                     all_tables.append(previous_table)  # Store previous
-#                     previous_table = table  # Start a new table
-#             else:
-#                 previous_table = table
-    
-#     if previous_table:
-#         all_tables.append(previous_table)  # Store last table
-    
-#     return all_tables
-import pdfplumber
-import pandas as pd
-import re
-
 def extract_tables_with_preceding_text(pdf):
     """Extract tables from the given PDF file page by page, associating them with preceding text and handling multi-page tables more cleanly."""
     all_tables = []
@@ -189,49 +159,104 @@ def extract_tables_with_preceding_text(pdf):
     
     return all_tables
 
+def parse_cell(cell):
+    superscript = None
+    if cell is None:
+        return { 'content': '', 'tags': [], 'superscript': superscript }
+    
+    if ',' in cell:
+        # print("Multiple values in cell:", cell)
+        cell = cell.split(',')[0]
+
+    # Check for 1 single newline
+    if cell.count('\n') == 1:
+        superscript, cell = cell.split('\n')
+
+    # Separate out parenthetical tags from cell values
+    tags = re.findall(r"\(([^)]+)\)", cell)
+    if tags:
+        cell = re.sub(r"\([^)]+\)", "", cell).strip()
+        # split tags which contain ;
+        tags = [tag.split(';') for tag in tags]
+        tags = [item.strip().replace('\n', ' ') for sublist in tags for item in sublist]
+    else:
+        tags = []
+
+    content = cell.strip()
+
+    return {
+        'content': content,
+        'tags': tags,
+        'superscript': superscript,
+    }
+
+def likely_number(s):
+    # Check that it contains only digits, decimal point, x, and ±
+    return all(c.isdigit() or c in "\n ,.×±-" for c in s)
+
+def clean_and_split_table(table):
+    out = []
+    header = table["preceding_text"]
+
+    if header.lower().startswith("experimental values") or re.match("^Table \\d+\\.", header, re.IGNORECASE):
+        name = header.split('\n')[1]
+        keys = table['table'][0]
+        rows = []
+
+        def finish():
+            out.append({
+                'name': name,
+                'keys': keys,
+                'rows': rows
+            })
+
+        i = 1
+        while i < len(table['table']):
+            row = table['table'][i]
+
+            parsed_row = [parse_cell(cell) for cell in row]
+            if any(cell['content'] == 'MULTIPLE VALUES' for cell in parsed_row):
+                # Skip rows with multiple values for now.
+                i += 1
+                continue
+
+
+            row_is_numbers = all([likely_number(cell['content']) for cell in parsed_row])
+            if row_is_numbers:
+                if len(row) != len(keys):
+                    # Parsing messed up somehow
+                    print("Stopping parsing after got", row)
+                    break
+
+                rows.append(parsed_row)
+                i += 1
+            else:
+                # Rows can flip in the middle of the table, so create a new one in that case
+                if parsed_row[0]['content'].lower().startswith('solubility of'):
+                    finish()
+                    name = row[0]
+                    rows = []
+                    keys = table['table'][i+1]
+                    i += 2
+                else:
+                    finish()
+                    keys = row
+                    rows = []
+                    i += 1
+
+
+        if rows:
+            finish()
+
+    return out
+
 
 def organize_tables(pdf):
     tables = extract_tables_with_preceding_text(pdf)
 
     parsed = []
     for table in tables:
-        header = table["preceding_text"]
-        if header.startswith("Experimental Values") or re.match("^Table \\d+\\.$", header):
-            name = header.split('\n')[1]
-            keys = table['table'][0]
-            rows = []
-
-            i = 1
-            while i < len(table['table']):
-                row = table['table'][i]
-                # Messed up tables
-
-                # Rows can flip in the middle of the table, so create a new one in that case
-                if row[0].lower().startswith('solubility of'):
-                    parsed.append({
-                        'name': name,
-                        'keys': keys,
-                        'rows': rows
-                    })
-                    name = row[0]
-                    rows = []
-                    keys = table['table'][i+1]
-                    i += 2
-
-                if len(row) != len(keys):
-                    # Parsing messed up somehow
-                    print("Stopping parsing after got", row)
-                    break
-
-                rows.append(row)
-                i += 1
-
-            if rows:
-                parsed.append({
-                    'name': name,
-                    'keys': keys,
-                    'rows': rows
-                })
+        parsed.extend(clean_and_split_table(table))
 
     return parsed
 
@@ -289,7 +314,7 @@ def parse_tables(pdf):
     tables = organize_tables(pdf)
     for table in tables:
         keys = table['keys']
-        table['rows'] = [transform_row(row, keys) for row in table['rows']]
+        # table['rows'] = [transform_row(row, keys) for row in table['rows']]
 
     return tables
 
@@ -301,4 +326,5 @@ def parse_all():
             outputs += parse_tables(pdf)
 
     print(len(outputs))
-    print(sum([len(x['rows']) for x in outputs]))
+    print(sum([len(x['rows']) for x in outputs]), 'points')
+    return outputs
