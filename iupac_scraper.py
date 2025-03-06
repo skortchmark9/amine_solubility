@@ -133,8 +133,9 @@ def extract_tables_with_preceding_text(pdf):
             else:
                 preceding_text_candidates = [line["text"] for line in lines if line["bottom"] < table_bbox[1]]
                 preceding_text = "\n".join(preceding_text_candidates[-2:]) if len(preceding_text_candidates) >= 2 else preceding_text_candidates[0] if preceding_text_candidates else "Unknown"
-            
-            extracted_table = table.extract()
+
+            # Slightly expand y_tolerance so that superscripts will not be relocated to newlines            
+            extracted_table = table.extract(y_tolerance=4)
             
             if extracted_table:
                 cleaned_table = [row for row in extracted_table if any(cell.strip() for cell in row if cell)]
@@ -159,18 +160,56 @@ def extract_tables_with_preceding_text(pdf):
     
     return all_tables
 
+def get_multi_value_rows(row):
+    cells_with_commas = [cell for cell in row if ',' in (cell or '')]
+    if not cells_with_commas:
+        return []
+    
+    if len(cells_with_commas) > 1:
+        raise Exception("Multiple multi-value cells")
+    
+    cell_with_comma = cells_with_commas[0]
+    i = row.index(cell_with_comma)
+
+    # If the other cells are non-numeric, this is probably keys
+    # and thus not a multi-value cell
+    for cell in row:
+        if cell is None:
+            return []
+        if cell != cell_with_comma and not likely_number(cell):
+            return []
+
+
+    if cells_with_commas[0] == '':
+        return []
+
+    # We want to handle newlines which can occur when there are multiple values.
+    # However, we also need to handle exponents specially first.
+    if '\n' in cell_with_comma:
+        if '× 10' in cell_with_comma:
+            split = cell_with_comma.split('\n', 1)
+            exps_str = split[0]
+            exps = exps_str.split(' ')
+            rest = split[1]
+
+
+
+    cell_with_comma = cell_with_comma.replace('\n', ' ')
+    values = cell_with_comma.split(',')
+    new_rows = []
+    for value in values:
+        new_row = row.copy()
+        new_row[i] = value.strip()
+        new_rows.append(new_row)
+
+    return new_rows
+
+
 def parse_cell(cell):
+    source = cell
     superscript = None
     if cell is None:
-        return { 'content': '', 'tags': [], 'superscript': superscript }
-    
-    if ',' in cell:
-        # print("Multiple values in cell:", cell)
-        cell = cell.split(',')[0]
-
-    # Check for 1 single newline
-    if cell.count('\n') == 1:
-        superscript, cell = cell.split('\n')
+        return { 'content': '', 'tags': [], 'superscript': superscript, 'source': source }
 
     # Separate out parenthetical tags from cell values
     tags = re.findall(r"\(([^)]+)\)", cell)
@@ -188,11 +227,26 @@ def parse_cell(cell):
         'content': content,
         'tags': tags,
         'superscript': superscript,
+        'source': source,
     }
 
 def likely_number(s):
     # Check that it contains only digits, decimal point, x, and ±
     return all(c.isdigit() or c in "\n ,.×±-" for c in s)
+
+def likely_key(s):
+    return any([
+        'compiler' in s,
+        'Solubility' in s,
+        'w1' in s,
+        'w2' in s,
+        'T/' in s,
+        't/' in s,
+        'x2' in s,
+        'Smoothed' in s,
+        'Experimental values' in s,
+    ])
+
 
 def clean_and_split_table(table):
     out = []
@@ -201,55 +255,59 @@ def clean_and_split_table(table):
     if header.lower().startswith("experimental values") or re.match("^Table \\d+\\.", header, re.IGNORECASE):
         name = header.split('\n')[1]
         keys = table['table'][0]
-        rows = []
+        input_rows = table['table'][1:]
+        output_rows = []
 
         def finish():
             out.append({
                 'name': name,
                 'keys': keys,
-                'rows': rows
+                'rows': output_rows
             })
 
-        i = 1
-        while i < len(table['table']):
-            row = table['table'][i]
+        while input_rows:
+            row = input_rows.pop(0)
 
-            parsed_row = [parse_cell(cell) for cell in row]
-            if any(cell['content'] == 'MULTIPLE VALUES' for cell in parsed_row):
-                # Skip rows with multiple values for now.
-                i += 1
+            multi_value_rows = get_multi_value_rows(row)
+            if multi_value_rows:
+                input_rows = multi_value_rows + input_rows
                 continue
 
 
-            row_is_numbers = all([likely_number(cell['content']) for cell in parsed_row])
-            if row_is_numbers:
+            parsed_row = [parse_cell(cell) for cell in row]
+
+            row_is_keys = all([likely_key(cell['content']) for cell in parsed_row if cell['source'] is not None])
+            if not row_is_keys:
                 if len(row) != len(keys):
                     # Parsing messed up somehow
                     print("Stopping parsing after got", row)
                     break
 
-                rows.append(parsed_row)
-                i += 1
+                output_rows.append(parsed_row)
             else:
                 # Rows can flip in the middle of the table, so create a new one in that case
                 if parsed_row[0]['content'].lower().startswith('solubility of'):
                     finish()
                     name = row[0]
-                    rows = []
-                    keys = table['table'][i+1]
-                    i += 2
+                    output_rows = []
+                    keys = input_rows.pop(0)
                 else:
                     finish()
                     keys = row
-                    rows = []
-                    i += 1
+                    output_rows = []
 
 
-        if rows:
+        if output_rows:
             finish()
 
     return out
 
+def print_table(table):
+    print(table['name'])
+    print(table['keys'])
+    print(len(table['rows']), 'rows')
+    if table['rows']:
+        print(table['rows'][-1])
 
 def organize_tables(pdf):
     tables = extract_tables_with_preceding_text(pdf)

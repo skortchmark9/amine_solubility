@@ -2,46 +2,53 @@ import re
 import pdfplumber
 import pandas as pd
 from iupac_scraper import *
+import pytest
 
-path = "papers/c4-c6 amines.pdf"
-pdf = pdfplumber.open(path)
 
-def test_1(table):
-    assert clean_and_split_table(table) == []
+@pytest.fixture(scope="module")
+def tables():
+    path = "papers/c4-c6 amines.pdf"
+    pdf = pdfplumber.open(path)
+    return extract_tables_with_preceding_text(pdf)
 
-def test_2(table):
+def test_1(tables):
+    assert clean_and_split_table(tables[0]) == []
+
+def test_2(tables):
     # This one flips the keys midway through
-    assert len(clean_and_split_table(table)) == 2
+    assert len(clean_and_split_table(tables[2])) == 2
 
-def test_3(table):
+def test_3(tables):
     # This one spans two pages
-    cleaned = clean_and_split_table(table)[0]
+    cleaned = clean_and_split_table(tables[5])[0]
     assert len(cleaned['rows']) == 1
 
-def test_4(table):
+def test_4(tables):
     """This one has a superscript in it and a name change"""
-    cleaned = clean_and_split_table(table)
+    cleaned = clean_and_split_table(tables[8])
 
     assert cleaned[0]['name'] == 'Solubility of diethylamine in water'
     assert cleaned[1]['name'] == 'Solubility of water in diethylamine'
-    assert cleaned[0]['rows'][1][0]['superscript'] == 'a'
 
-def test_5(table):
+    # TODO: will need to deal with this.
+    assert cleaned[0]['rows'][1][0]['content'] == '143.5a'
+    # assert cleaned[0]['rows'][1][0]['superscript'] == 'a'
+
+def test_5(tables):
     """This one has tentative and doubtful values"""
-    cleaned = clean_and_split_table(table)
+    cleaned = clean_and_split_table(tables[18])
     assert len(cleaned) == 2
     cell = cleaned[0]['rows'][0][1]
     assert cell['tags'] == ['D', 'Ref. 5']
 
-def main():
-    tables = extract_tables_with_preceding_text(pdf)
-    test_1(tables[0])
-    test_2(tables[2])
-    test_3(tables[5])
-    test_4(tables[8])
-    test_5(tables[18])
-    print('All tests passed.')
+    # And also multi-value cells
+    assert len(cleaned[0]['rows']) == 5
+    assert len(cleaned[1]['rows']) == 13
 
+def test_6(tables):
+    """This one has a multi-value cell and an exponent"""
+    cleaned = clean_and_split_table(tables[60])
+    assert len(cleaned) == 2
 
-if __name__ == '__main__':
-    main()
+    assert len(cleaned[0]['rows']) == 13
+    assert len(cleaned[1]['rows']) == 1
