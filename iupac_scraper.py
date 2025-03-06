@@ -15,10 +15,10 @@ def load():
 def partition(x, cond):
     return [x for x in x if cond(x)], [x for x in x if not cond(x)]
 
-def v3_extract_tables_with_preceding_text(pdf):
+def extract_tables_with_preceding_text(pdf):
     tables_with_text = []
 
-    for page in pdf.pages[42:45]:
+    for page in pdf.pages:
         found_tables = page.find_tables()
         lines = [
             line for line in page.extract_text_lines() if not
@@ -47,7 +47,6 @@ def v3_extract_tables_with_preceding_text(pdf):
             })
             lines = rest
 
-    # return tables_with_text
     out = []
     prev_table = None
     for table in tables_with_text:

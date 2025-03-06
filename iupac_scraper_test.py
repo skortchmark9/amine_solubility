@@ -47,7 +47,7 @@ def test_5(tables):
 
 def test_6(tables):
     """This one has a multi-value cell and an exponent"""
-    cleaned = clean_and_split_table(tables[60])
+    cleaned = clean_and_split_table(tables[64])
     assert len(cleaned) == 2
 
     assert len(cleaned[0]['rows']) == 13
@@ -55,5 +55,5 @@ def test_6(tables):
 
 def test_7(tables):
     """This table shouldn't be so long..."""
-    tables[52]
+    tables[54]
     cleaned = clean_and_split_table(tables[52])
