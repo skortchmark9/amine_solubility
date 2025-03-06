@@ -4,7 +4,7 @@ import pandas as pd
 
 sources = [
     "papers/c4-c6 amines.pdf",
-    "papers/c7-c24 amines.pdf",
+    # "papers/c7-c24 amines.pdf",
     # "papers/non-aliphatic amines.pdf",
 ]
 
@@ -140,7 +140,6 @@ def extract_tables_with_preceding_text(pdf):
             if extracted_table:
                 cleaned_table = [row for row in extracted_table if any(cell.strip() for cell in row if cell)]
                 tables.append({"preceding_text": preceding_text, "table": cleaned_table, "bbox": table_bbox})
-        
         # Save non-table text for the next page
         previous_page_text = [line["text"] for line in lines if not any(table.bbox[1] < line["top"] < table.bbox[3] for table in found_tables)]
         
@@ -183,17 +182,6 @@ def get_multi_value_rows(row):
     if cells_with_commas[0] == '':
         return []
 
-    # We want to handle newlines which can occur when there are multiple values.
-    # However, we also need to handle exponents specially first.
-    if '\n' in cell_with_comma:
-        if '× 10' in cell_with_comma:
-            split = cell_with_comma.split('\n', 1)
-            exps_str = split[0]
-            exps = exps_str.split(' ')
-            rest = split[1]
-
-
-
     cell_with_comma = cell_with_comma.replace('\n', ' ')
     values = cell_with_comma.split(',')
     new_rows = []
@@ -209,7 +197,7 @@ def parse_cell(cell):
     source = cell
     superscript = None
     if cell is None:
-        return { 'content': '', 'tags': [], 'superscript': superscript, 'source': source }
+        return { 'content': '', 'tags': [], 'superscript': superscript, 'source': source, 'value': None }
 
     # Separate out parenthetical tags from cell values
     tags = re.findall(r"\(([^)]+)\)", cell)
@@ -228,6 +216,7 @@ def parse_cell(cell):
         'tags': tags,
         'superscript': superscript,
         'source': source,
+        'value': None,
     }
 
 def likely_number(s):
@@ -253,6 +242,10 @@ def clean_and_split_table(table):
     header = table["preceding_text"]
 
     if header.lower().startswith("experimental values") or re.match("^Table \\d+\\.", header, re.IGNORECASE):
+        if '+' in header:
+            return out
+
+        # print(header)
         name = header.split('\n')[1]
         keys = table['table'][0]
         input_rows = table['table'][1:]
@@ -280,7 +273,7 @@ def clean_and_split_table(table):
             if not row_is_keys:
                 if len(row) != len(keys):
                     # Parsing messed up somehow
-                    print("Stopping parsing after got", row)
+                    print("Stopping parsing after got", header, row)
                     break
 
                 output_rows.append(parsed_row)
@@ -312,17 +305,15 @@ def print_table(table):
 def organize_tables(pdf):
     tables = extract_tables_with_preceding_text(pdf)
 
-    parsed = []
+    cleaned = []
     for table in tables:
-        parsed.extend(clean_and_split_table(table))
+        cleaned.extend(clean_and_split_table(table))
 
-    return parsed
-
-import re
+    return cleaned
 
 def parse_scientific_notation(s):
-    """Parses a string in the format '9.24 × 10^−3' and returns a float."""
-    match = re.match(r"([\d\.]+)\s*×\s*10\^([−\-]?\d+)", s)
+    """Parses a string in the format '9.24 × 10−3' and returns a float."""
+    match = re.match(r"([\d\.]+)\s*×\s*10([−\-]?\d+)", s)
     if not match:
         raise ValueError(f"Invalid scientific notation format: {s}")
     
@@ -330,36 +321,27 @@ def parse_scientific_notation(s):
     exponent = exponent.replace('−', '-')  # Handle minus signs
     return float(base) * (10 ** int(exponent))
 
+def is_number_with_ending_superscript(s):
+    """Checks if a string is a number with a superscript at the end."""
+    return re.match(r"[\d\.]+[a-z]", s)
+
+def is_exponent(s):
+     return '×' in s
 
 def transform_row(row, keys):
     # Handle exponents and references
     update = []
     for cell in row:
-        if cell is None:
-            # TODO: deal with this - parsing issue
-            update.append(None)
-            continue
-            
-        # Handle cases like: -3\n2.293 x 10 with regex
-        cell = cell.strip()
-        if '\n' in cell:
-            exp, n = cell.split('\n')
-            # if exp is a digit
-            # check if exp is a digit
-            if exp.isdigit():
-                cell = f"{n}^{(exp)}"
-                cell = parse_scientific_notation(cell)
-            else:
-                # TODO: handle footnotes / references
-                cell = n
-        if '×' in cell:
-            first, second = cell.split('×')
-            cell = handle_plus_minus(first.strip())
-            if second.strip() == '10':
-                cell = handle_plus_minus(first.strip()) * 10
-
-        if type(cell) == str and '±' in cell:
-            cell = handle_plus_minus(cell)
+        cell = cell.copy()
+        if is_number_with_ending_superscript(cell['content']):
+            cell['superscript'] = cell['content'][-1]
+            cell['value'] = float(cell['content'][:-1])
+        elif is_exponent(cell['content']):
+            cell['value'] = parse_scientific_notation(cell['content'])
+        elif '±' in cell['content']:
+            cell['value'] = handle_plus_minus(cell['content'])
+        elif cell['content']:
+            cell['value'] = float(cell['content'])
 
         update.append(cell)
     return update
@@ -372,7 +354,12 @@ def parse_tables(pdf):
     tables = organize_tables(pdf)
     for table in tables:
         keys = table['keys']
-        # table['rows'] = [transform_row(row, keys) for row in table['rows']]
+        try:
+            table['rows'] = [transform_row(row, keys) for row in table['rows']]
+        except Exception as e:
+            print(table)
+            raise e
+            
 
     return tables
 

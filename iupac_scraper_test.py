@@ -52,3 +52,7 @@ def test_6(tables):
 
     assert len(cleaned[0]['rows']) == 13
     assert len(cleaned[1]['rows']) == 1
+
+def test_7(tables):
+    """This table shouldn't be so long..."""
+    tables[52]
