@@ -56,3 +56,4 @@ def test_6(tables):
 def test_7(tables):
     """This table shouldn't be so long..."""
     tables[52]
+    cleaned = clean_and_split_table(tables[52])
