@@ -1,10 +1,11 @@
+import math
 import re
 import pdfplumber
 import pandas as pd
 
 sources = [
     "papers/c4-c6 amines.pdf",
-    # "papers/c7-c24 amines.pdf",
+    "papers/c7-c24 amines.pdf",
     # "papers/non-aliphatic amines.pdf",
 ]
 
@@ -18,7 +19,7 @@ def partition(x, cond):
 def extract_tables_with_preceding_text(pdf):
     tables_with_text = []
 
-    for page in pdf.pages:
+    for i, page in enumerate(pdf.pages):
         found_tables = page.find_tables()
         lines = [
             line for line in page.extract_text_lines() if not
@@ -28,7 +29,6 @@ def extract_tables_with_preceding_text(pdf):
         all_objects.sort(key=lambda obj: obj["top"] if isinstance(obj, dict) else obj.bbox[1])
         topmost_object = all_objects[0] if all_objects else None
         bottommost_object = all_objects[-1] if all_objects else None
-
 
         for table in found_tables:
             table_bbox = table.bbox
@@ -40,6 +40,7 @@ def extract_tables_with_preceding_text(pdf):
 
             tables_with_text.append({
                 'table': cleaned_table,
+                'page': i + 1,
                 'lines_above': [l['text'] for l in lines_above],
                 'lines_below': [l['text'] for l in rest] if last_table else [],
                 'is_top': table == topmost_object,
@@ -56,7 +57,7 @@ def extract_tables_with_preceding_text(pdf):
             preceding_lines = table['lines_above'][-2:]
         # No lines above, and none below the previous one - merge them.
         # elif prev_table and not prev_table['lines_below']:
-        elif prev_table and table['is_top'] and prev_table['is_bottom']:
+        elif prev_table and table['is_top'] and prev_table['is_bottom'] and prev_table['page'] == (table['page'] - 1):
             prev_table['table'].extend(table['table'])
             prev_table['lines_below'] = table['lines_below']
             prev_table['is_bottom'] = table['is_bottom']
@@ -67,6 +68,7 @@ def extract_tables_with_preceding_text(pdf):
         out.append({
             'preceding_text': '\n'.join(preceding_lines),
             'table': table['table'],
+            'page': table['page'],
         })
         prev_table = table
         continue
@@ -114,6 +116,7 @@ def parse_cell(cell):
     if cell is None:
         return { 'content': '', 'tags': [], 'superscript': superscript, 'source': source, 'value': None }
 
+    cell = cell.replace('−', '-')
     # Separate out parenthetical tags from cell values
     tags = re.findall(r"\(([^)]+)\)", cell)
     if tags:
@@ -145,10 +148,13 @@ def likely_key(s):
         'w1' in s,
         'w2' in s,
         'T/' in s,
+        'T/K' in s,
         't/' in s,
+        'x1' in s,
         'x2' in s,
         'Smoothed' in s,
         'Experimental values' in s,
+        'T' in s,
     ])
 
 
@@ -160,15 +166,18 @@ def clean_and_split_table(table):
         if '+' in header:
             return out
 
-        # print(header)
         name = header.split('\n')[1]
         keys = table['table'][0]
+        if keys[0] in ('Author(s)', 'Components'):
+            return out
+
         input_rows = table['table'][1:]
         output_rows = []
 
         def finish():
             out.append({
                 'name': name,
+                'page': table['page'],
                 'keys': keys,
                 'rows': output_rows
             })
@@ -211,7 +220,7 @@ def clean_and_split_table(table):
     return out
 
 def print_table(table):
-    print(table['name'])
+    print(table['name'], table['page'])
     print(table['keys'])
     print(len(table['rows']), 'rows')
     if table['rows']:
@@ -230,6 +239,7 @@ def parse_scientific_notation(s):
     """Parses a string in the format '9.24 × 10−3' and returns a float."""
     match = re.match(r"([\d\.]+)\s*×\s*10([−\-]?\d+)", s)
     if not match:
+        return math.nan
         raise ValueError(f"Invalid scientific notation format: {s}")
     
     base, exponent = match.groups()
@@ -272,6 +282,7 @@ def parse_tables(pdf):
         try:
             table['rows'] = [transform_row(row, keys) for row in table['rows']]
         except Exception as e:
+            print_table(table)
             print(table)
             raise e
             
