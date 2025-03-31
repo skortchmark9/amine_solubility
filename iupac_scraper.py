@@ -2,11 +2,12 @@ import math
 import re
 import pdfplumber
 import pandas as pd
+import numpy as np
 
 sources = [
-    "papers/c4-c6 amines.pdf",
-    "papers/c7-c24 amines.pdf",
-    # "papers/non-aliphatic amines.pdf",
+    # "papers/c4-c6 amines.pdf",
+    # "papers/c7-c24 amines.pdf",
+    "papers/non-aliphatic amines.pdf",
 ]
 
 def load():
@@ -128,6 +129,7 @@ def parse_cell(cell):
         tags = []
 
     content = cell.strip()
+    content = content.replace('−', '-')
 
     return {
         'content': content,
@@ -139,7 +141,7 @@ def parse_cell(cell):
 
 def likely_number(s):
     # Check that it contains only digits, decimal point, x, and ±
-    return all(c.isdigit() or c in "\n ,.×±-" for c in s)
+    return all(c.isdigit() or c in "\n ,.×±-−" for c in s)
 
 def likely_key(s):
     return any([
@@ -162,11 +164,19 @@ def clean_and_split_table(table):
     out = []
     header = table["preceding_text"]
 
-    if header.lower().startswith("experimental values") or re.match("^Table \\d+\\.", header, re.IGNORECASE):
+    if (
+        header.lower().startswith("experimental values") or 
+        re.match("^Table \\d+\\.", header, re.IGNORECASE)
+        or header.lower().startswith("solubility of")
+    ):
         if '+' in header:
             return out
 
-        name = header.split('\n')[1]
+        nsplit = header.split('\n')
+        if len(nsplit) > 1:
+            name = nsplit[1]
+        else:
+            name = nsplit[0]
         keys = table['table'][0]
         if keys[0] in ('Author(s)', 'Components'):
             return out
@@ -196,8 +206,15 @@ def clean_and_split_table(table):
             row_is_keys = all([likely_key(cell['content']) for cell in parsed_row if cell['source'] is not None])
             if not row_is_keys:
                 if len(row) != len(keys):
+                    # print(row, keys)
                     # Parsing messed up somehow
-                    print("Stopping parsing after got", header, row)
+                    print("Stopping parsing after row arity mismatch")
+                    print('Keys:')
+                    print(keys)
+                    print('Row:')
+                    print(row)
+                    print("Whole Table")
+                    print(table)
                     break
 
                 output_rows.append(parsed_row)
@@ -220,10 +237,13 @@ def clean_and_split_table(table):
     return out
 
 def print_table(table):
-    print(table['name'], table['page'])
+    print(table['name'], 'Page', table['page'])
     print(table['keys'])
     print(len(table['rows']), 'rows')
     if table['rows']:
+        print('First:')
+        print(table['rows'][0])
+        print('Last:')
         print(table['rows'][-1])
 
 def organize_tables(pdf):
@@ -248,28 +268,38 @@ def parse_scientific_notation(s):
 
 def is_number_with_ending_superscript(s):
     """Checks if a string is a number with a superscript at the end."""
-    return re.match(r"[\d\.]+[a-z]", s)
+    return re.match(r"[−\d\.]+[a-z]", s)
 
 def is_exponent(s):
      return '×' in s
 
-def transform_row(row, keys):
+def transform_row(row):
     # Handle exponents and references
     update = []
     for cell in row:
         cell = cell.copy()
+        cell['content'] = cell['content'].replace('−', '-')
         if is_number_with_ending_superscript(cell['content']):
             cell['superscript'] = cell['content'][-1]
-            cell['value'] = float(cell['content'][:-1])
+            try:
+                cell['value'] = float(cell['content'][:-1])
+            except ValueError:
+                raise AmbiguousException('Invalid number with superscript')
         elif is_exponent(cell['content']):
             cell['value'] = parse_scientific_notation(cell['content'])
         elif '±' in cell['content']:
             cell['value'] = handle_plus_minus(cell['content'])
         elif cell['content']:
+            if '>' in cell['content']:
+                raise AmbiguousException("Greater than sign in cell")
+
             cell['value'] = float(cell['content'])
 
         update.append(cell)
     return update
+
+class AmbiguousException(Exception):
+    pass
 
 def handle_plus_minus(str):
     out = str.replace('(', '').replace(')', '')
@@ -278,17 +308,103 @@ def handle_plus_minus(str):
 def parse_tables(pdf):
     tables = organize_tables(pdf)
     for table in tables:
-        keys = table['keys']
-        try:
-            table['rows'] = [transform_row(row, keys) for row in table['rows']]
-        except Exception as e:
-            print_table(table)
-            print(table)
-            raise e
+        new_rows = []
+        for i, raw_row in enumerate(table['rows']):
+            try:
+                transformed = transform_row(raw_row)
+                new_rows.append(transformed)
+            except AmbiguousException as e:
+                print(e)
+            except Exception as e:
+                print("Error parsing row", i, "of table", table['name'])
+                print_table(table)
+                raise e
             
-
+        table['rows'] = new_rows
+            
     return tables
 
+def get_compound_from_name(name):
+    match = re.match(r"Experimental values for solubility of (.+?) \(\d\) in (.+) \(\d\)", name)
+    if match:
+        compound1 = match.group(1)
+        compound2 = match.group(2)
+        solute = compound1.strip()
+        solvent = compound2.strip()
+        return solute, solvent
+
+    match = re.match(r"Solubility of (.+?) in (.+)", name)
+    if match:
+        compound1 = match.group(1)
+        compound2 = match.group(2)
+        solute = compound1.strip()
+        solvent = compound2.strip()
+        return solute, solvent
+
+    return None, None
+
+def c_to_k(c):
+    """Convert Celsius to Kelvin."""
+    return c + 273.15
+
+
+def to_df(table):
+    columns = [
+        'T',
+        'x',
+        'T (smoothed)',
+        'x (smoothed)',
+        'Confidence',
+        'Reference',
+        'Estimated LCP',
+        'Estimated UCP',
+    ]
+
+    row_datas = []
+    keys_lower = [k.lower() for k in table['keys']]
+    for row in table['rows']:
+        row_data = {k: None for k in columns}
+        for (cell, key) in zip(row, keys_lower):
+            if key == 't/k':
+                row_data['T'] = cell['value']
+            elif key == 't/°c':
+                row_data['T'] = c_to_k(cell['value'])
+            elif 't/k' in key and 'smoothed' in key:
+                row_data['T (smoothed)'] = cell['value']
+            elif ('x1' in key or 'x2' in key):
+                if 'smoothed' in key:
+                    row_data['x (smoothed)'] = cell['value']
+                else:
+                    row_data['x'] = cell['value']
+
+
+            tags = cell['tags']
+            for tag in tags:
+                if tag.startswith('Ref.'):
+                    row_data['Reference'] = tag
+                elif tag in ('T', 'D', 'R'):
+                    row_data['Confidence'] = tag
+                elif tag.startswith('Estimated'):
+                    if 'lower critical point' in tag:
+                        row_data['Estimated LCP'] = cell['value']
+                    elif 'UCP' in tag:
+                        row_data['Estimated UCP'] = cell['value']
+
+        row_datas.append(row_data)
+
+    solute, solvent = get_compound_from_name(table['name'])
+    df = pd.DataFrame(row_datas)
+
+    df = df.replace([np.nan], [None])
+    print(len(df))
+
+    df['Solubility of:'] = solute
+    df['In:'] = solvent
+    # Move the solute and solvent columns to the front
+    df = df[['Solubility of:', 'In:'] + [col for col in df.columns if col not in ['Solubility of:', 'In:']]]
+    
+    df['page'] = table['page']
+    return df
 
 def parse_all():
     outputs = []
@@ -296,6 +412,29 @@ def parse_all():
         with pdfplumber.open(source) as pdf:
             outputs += parse_tables(pdf)
 
-    print(len(outputs))
-    print(sum([len(x['rows']) for x in outputs]), 'points')
-    return outputs
+
+    dfs = [to_df(output) for output in outputs]
+
+    # Note this will produce a warning if some columns are all NaN.
+    concat = pd.concat(dfs)
+    return concat
+
+
+def compare_to_human(scraper):
+    human = pd.read_csv('data/Solubility data C4-C24.csv')
+
+    human_compounds = list(human['In:'].unique())
+
+    def clean(s):
+        s = s.lower()
+        s = s.split(' ')[0]
+        s = s.split('\xa0')[0]
+        s = s.replace(';', '')
+        return s
+
+    human_compounds = set([clean(c) for c in human_compounds if type(c) == str])
+
+    scraper_compounds = list(scraper['In:'].unique())
+    scraper_compounds = set([clean(c) for c in scraper_compounds if type(c) == str])
+    print("Human compounds:", len(human_compounds))
+    print("Scraper compounds:", len(scraper_compounds))
