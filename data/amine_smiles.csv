@@ -57,6 +57,7 @@ Dimethyloctylamine (C10H23N),CCCCCCCCNC
 "N,N,N′,N′-Tetramethyl-1,6-hexanediamine (C10H24N2)",CN(C)CCCCCNC(C)C
 1-Methyldecylamine (C11H25N),CCCCCCCC(C)N
 3-(Dibutylamino)propylamine (C11H26N2),CCCCN(CCCN)CCCC
+3-(Dibutylamino)propylamine,CCCCN(CCCN)CCCC
 Dodecylamine (C12H27N),CCCCCCCCCCCN
 Tributylamine (C12H27N),CCCCN(CCCC)CCCC
 "2,6-Dimethylpiperidine (2,6-Lupetidine); C7H15N",CC1CCCC(C)N1
@@ -101,7 +102,7 @@ dipentylamine,CCCCCNCCCCC
 trioctylamine,CCCCCCCCN(CCCCCCCC)CCCCCCCC
 aniline,c1ccccc1N
 3-methylpyridine,Cc1cccnc1
-"2,3-dimethylpyridine",Cc1ccccn1C
+"2,3-dimethylpyridine",CC1=C(N=CC=C1)C
 "2,4-dimethylpyridine",Cc1cc(C)ccn1
 "2,5-dimethylpyridine",Cc1cc(C)cnc1
 "2,6-dimethylpyridine",Cc1cccc(C)n1

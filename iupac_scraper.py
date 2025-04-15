@@ -440,11 +440,56 @@ def parse_all():
 def assign_smiles(df):
     compounds = df['Solubility of:'].unique()
     smiles = load_smiles()
-    smiles_lower = {k.lower().split('(')[0].strip(): v for k, v in smiles.items()}
-    missing = []
+    smiles_lower = {}
+    for k, v in smiles.items():
+        k = k.lower()
+        k = k.split(';')[0]
+        if k != '3-(dibutylamino)propylamine':
+            k = k.split('(')[0].strip()
+        smiles_lower[k] = v
+
     for c in compounds:
         if c is not None and c.lower() not in smiles_lower:
             print("Missing SMILES for compound", c)
+
+
+    df['smiles'] = None
+    df = df.reset_index(drop=True)
+    for i, row in df.iterrows():
+        solute = row['Solubility of:']
+        solvent = row['In:']
+        compound = solute if solute != 'water' else solvent
+        df.at[i, 'smiles'] = smiles_lower[compound.lower()]
+
+    return df
+
+
+def prepare_data_for_learning(df):
+    df = df.copy()
+
+    # drop rows where solute/solvent is None
+    df = df.dropna(subset=['Solubility of:', 'In:'])
+
+    df = assign_smiles(df)
+
+    # Add aiw column. If 'solubility of' is water, set aiw to 0.0
+    df['aiw'] = 0.0
+    df.loc[df['Solubility of:'].str.lower() != 'water', 'aiw'] = 1.0
+    df.loc[df['Solubility of:'].str.lower() == 'water', 'aiw'] = 0.0
+
+    # Use smoothed values where applicable
+    df['x'] = df['x (smoothed)'].combine_first(df['x'])
+    df['T'] = df['T (smoothed)'].combine_first(df['T'])
+
+    # For columns where water is the solute, x = 1 - x
+    df.loc[df['Solubility of:'].str.lower() == 'water', 'x'] = 1 - df['x']
+
+    df['x'] = df['x'].astype(np.float32)
+    df['T'] = df['T'].astype(np.float32)
+
+    # # Drop any values where confidence is marked as 'T', 'D'
+    df = df[~df['Confidence'].isin(['T', 'D'])]
+    return df
 
 
 
