@@ -93,4 +93,47 @@ tert-Butylcyclohexylamine; C10H21N,CC(C)(C)NC1CCCCC1
 "Dodecylamine (1-Aminododecane, Laurylamine); C12H27N",CCCCCCCCCCCCN  
 "Tributylamine (Tri-n-butylamine, N,N-Dibutyl-1-butanamine); C12H27N",CCCCN(CCCC)CCCC  
 Triisobutylamine; C12H27N,CC(C)CN(CC(C)C)CC(C)C  
-"Dihexylamine (N,N-Dihexylamine, N-Hexyl-1-hexanamine); C12H27N",CCCCCCNCCCCCC  
+"Dihexylamine (N,N-Dihexylamine, N-Hexyl-1-hexanamine); C12H27N",CCCCCCNCCCCCC
+dimethylethylamine,CCN(C)C
+dipentylamine,CCCCCNCCCCC
+3-(dibutylamino)propylamine,CCCCC(CCCN)NCCCC
+1-methyldodecylamine,CCCCCCCCCCCC(C)N
+trioctylamine,CCCCCCCCN(CCCCCCCC)CCCCCCCC
+aniline,c1ccccc1N
+3-methylpyridine,Cc1cccnc1
+"2,3-dimethylpyridine",Cc1ccccn1C
+"2,4-dimethylpyridine",Cc1cc(C)ccn1
+"2,5-dimethylpyridine",Cc1cc(C)cnc1
+"2,6-dimethylpyridine",Cc1cccc(C)n1
+"3,4-dimethylpyridine",Cc1cc(C)cnc1
+"3,5-dimethylpyridine",Cc1cncc(C)c1
+2-ethylpyridine,CCc1ccccn1
+3-ethylpyridine,CCc1cccnc1
+4-ethylpyridine,CCc1ccncc1
+"N,N-dimethylaniline",c1ccccc1N(C)C
+"2,3-dimethylaniline",Cc1cccc(N)c1C
+"2,4-dimethylaniline",Cc1ccc(N)cc1C
+"2,5-dimethylaniline",Cc1cc(N)ccc1C
+"2,6-dimethylaniline",Cc1cc(N)cc(C)c1
+"3,5-dimethylaniline",Cc1cc(N)cc(C)c1
+N-ethylaniline,c1ccccc1NCC
+2-ethylaniline,CCc1ccccc1N
+4-ethylaniline,CCc1ccc(N)cc1
+3-ethyl-4-methylpyridine,CCc1cc(C)cnc1
+5-ethyl-2-methylpyridine,CCc1cc(C)cnc1
+4-isopropylpyridine,CC(C)c1ccncc1
+"2,4,6-trimethylpyridine",Cc1cc(C)nc(C)c1
+isoquinoline,c1ccc2c(c1)cccn2
+quinoline,c1ccc2cccnc2c1
+benzyldimethylamine,CN(C)Cc1ccccc1
+4-tert-butylpyridine,CC(C)(C)c1ccncc1
+2-ethyl-6-methylaniline,CCc1cc(N)cc(C)c1
+2-isopropylaniline,CC(C)c1ccccc1N
+2-methylquinoline,Cc1ccc2cccnc2c1
+4-methylquinoline,Cc1ccnc2ccccc12
+7-methylquinoline,Cc1cccc2cccnc12
+8-methylquinoline,Cc1ccc2cccnc2c1
+5-butyl-2-methylpyridine,CCCCc1cc(C)cnc1
+"N,N-diethylaniline",c1ccccc1N(CC)CC
+diphenylamine,c1ccc(cc1)Nc2ccccc2
+"3-(dibutylamino)propylamine",CCCCN(CCCC)CCCN

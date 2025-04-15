@@ -3,16 +3,17 @@ import re
 import pdfplumber
 import pandas as pd
 import numpy as np
+from smiles_fingerprints import load_smiles
 
 sources = [
-    # "papers/c4-c6 amines.pdf",
-    # "papers/c7-c24 amines.pdf",
+    "papers/c4-c6 amines.pdf",
+    "papers/c7-c24 amines.pdf",
     "papers/non-aliphatic amines.pdf",
 ]
 
 def load():
     return pdfplumber.open(sources[0])
-
+    
 
 def partition(x, cond):
     return [x for x in x if cond(x)], [x for x in x if not cond(x)]
@@ -208,13 +209,13 @@ def clean_and_split_table(table):
                 if len(row) != len(keys):
                     # print(row, keys)
                     # Parsing messed up somehow
-                    print("Stopping parsing after row arity mismatch")
-                    print('Keys:')
-                    print(keys)
-                    print('Row:')
-                    print(row)
-                    print("Whole Table")
-                    print(table)
+                    # print("Stopping parsing after row arity mismatch")
+                    # print('Keys:')
+                    # print(keys)
+                    # print('Row:')
+                    # print(row)
+                    # print("Whole Table")
+                    # print(table)
                     break
 
                 output_rows.append(parsed_row)
@@ -268,7 +269,11 @@ def parse_scientific_notation(s):
 
 def is_number_with_ending_superscript(s):
     """Checks if a string is a number with a superscript at the end."""
-    return re.match(r"[−\d\.]+[a-z]", s)
+    return re.match(r"[−\d\.]+[a-z,]{1,3}", s)
+
+def get_number_and_superscript(s):
+    """Checks if a string is a number with a superscript at the end."""
+    return re.match(r"([−\d\.]+)([a-z,]{1,3})", s)
 
 def is_exponent(s):
      return '×' in s
@@ -278,13 +283,14 @@ def transform_row(row):
     update = []
     for cell in row:
         cell = cell.copy()
-        cell['content'] = cell['content'].replace('−', '-')
+        cell['content'] = cell['content'].replace('−', '-').strip()
         if is_number_with_ending_superscript(cell['content']):
-            cell['superscript'] = cell['content'][-1]
+            number, superscript = get_number_and_superscript(cell['content']).groups()
             try:
-                cell['value'] = float(cell['content'][:-1])
+                cell['value'] = float(number)
+                cell['superscript'] = superscript
             except ValueError:
-                raise AmbiguousException('Invalid number with superscript')
+                raise AmbiguousException(f'Invalid number with superscript {cell["content"]}')
         elif is_exponent(cell['content']):
             cell['value'] = parse_scientific_notation(cell['content'])
         elif '±' in cell['content']:
@@ -293,7 +299,11 @@ def transform_row(row):
             if '>' in cell['content']:
                 raise AmbiguousException("Greater than sign in cell")
 
-            cell['value'] = float(cell['content'])
+            # TODO: fix this - something weird going on with superscripts
+            try:
+                cell['value'] = float(cell['content'])
+            except ValueError:
+                raise AmbiguousException(f'Invalid number {cell["content"]}')
 
         update.append(cell)
     return update
@@ -307,20 +317,26 @@ def handle_plus_minus(str):
 
 def parse_tables(pdf):
     tables = organize_tables(pdf)
+    error_rows = 0
+    success_rows = 0
     for table in tables:
         new_rows = []
         for i, raw_row in enumerate(table['rows']):
             try:
                 transformed = transform_row(raw_row)
                 new_rows.append(transformed)
+                success_rows += 1
             except AmbiguousException as e:
+                error_rows += 1
                 print(e)
             except Exception as e:
-                print("Error parsing row", i, "of table", table['name'])
+                print("Fatal error parsing row", i, "of table", table['name'])
                 print_table(table)
                 raise e
-            
+
         table['rows'] = new_rows
+
+    print(f"Parsing errors {error_rows} out of {success_rows + error_rows} rows")
             
     return tables
 
@@ -396,7 +412,6 @@ def to_df(table):
     df = pd.DataFrame(row_datas)
 
     df = df.replace([np.nan], [None])
-    print(len(df))
 
     df['Solubility of:'] = solute
     df['In:'] = solvent
@@ -407,17 +422,30 @@ def to_df(table):
     return df
 
 def parse_all():
-    outputs = []
+    dfs = []
     for source in sources:
         with pdfplumber.open(source) as pdf:
-            outputs += parse_tables(pdf)
+            outputs = parse_tables(pdf)
+            pdf_dfs = [to_df(table) for table in outputs]
+            for pdf_df in pdf_dfs:
+                pdf_df['source'] = source
 
-
-    dfs = [to_df(output) for output in outputs]
+            dfs.extend(pdf_dfs)
 
     # Note this will produce a warning if some columns are all NaN.
     concat = pd.concat(dfs)
     return concat
+
+
+def assign_smiles(df):
+    compounds = df['Solubility of:'].unique()
+    smiles = load_smiles()
+    smiles_lower = {k.lower().split('(')[0].strip(): v for k, v in smiles.items()}
+    missing = []
+    for c in compounds:
+        if c is not None and c.lower() not in smiles_lower:
+            print("Missing SMILES for compound", c)
+
 
 
 def compare_to_human(scraper):
