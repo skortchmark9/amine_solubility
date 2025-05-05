@@ -8,7 +8,7 @@ from smiles_fingerprints import load_smiles
 sources = [
     "papers/c4-c6 amines.pdf",
     "papers/c7-c24 amines.pdf",
-    "papers/non-aliphatic amines.pdf",
+    # "papers/non-aliphatic amines.pdf",
 ]
 
 def load():

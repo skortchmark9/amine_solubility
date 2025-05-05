@@ -5,8 +5,9 @@ import pandas as pd
 import xgboost as xgb
 from iupac_scraper import parse_all
 from sklearn.metrics import make_scorer
+from smiles_fingerprints import compute_rdkit_features
 from catboost import CatBoostRegressor
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
 from sklearn.metrics import (
     root_mean_squared_error,
     mean_absolute_error,
@@ -62,9 +63,9 @@ def select_features(df):
     # Keep only amines in water experiments
     # df = df[df['Solubility of:'] == 'Water']
 
-    print("Data size:", df.shape)
-
     df = df[SELECTED_FEATURES + target].dropna()
+    print("Data size:", df.shape)
+    print("Columns", df.columns)
 
 
     get_fingerprint = create_morgan_generator(2, 2048)
@@ -73,7 +74,16 @@ def select_features(df):
         fps_df = pd.DataFrame(fps.apply(pd.Series).fillna(0))  # Convert sparse to fixed matrix
         fps_df.columns = [f"FP_{i}" for i in range(len(fps_df.columns))]
         df = pd.concat([df, fps_df], axis=1)
-        df = df.drop(columns=['smiles'])
+
+    if 'smiles' in SELECTED_FEATURES:
+        smiles_features = df['smiles'].apply(compute_rdkit_features)
+        smiles_features_df = pd.DataFrame(smiles_features.tolist(), index=df.index)
+
+        df = pd.concat([df, smiles_features_df], axis=1)
+
+    df = df.drop(columns=['smiles'])
+    print("Data size:", df.shape)
+    print("Columns", df.columns)
 
     return df
 
@@ -85,7 +95,7 @@ def train_model_simple(X_train, y_train):
         'colsample_bytree': 0.8,
         'learning_rate': 0.1,
         'max_depth': 5,
-        'n_estimators': 400,
+        'n_estimators': 300,
         'random_state': 42,
         'subsample': 0.9,
     }
@@ -143,10 +153,19 @@ def train_model_optimized(X_train, y_train):
         param_grid = xgb_param_grid
         model = xgb.XGBRegressor(**param_grid)
 
+    grid_search = RandomizedSearchCV(
+        estimator=model,
+        param_distributions=param_grid,
+        n_iter=25,  # number of random combinations to try
+        scoring='neg_root_mean_squared_error',
+        cv=5,
+        n_jobs=-1,
+        random_state=42,
+    )
+
     grid_search = GridSearchCV(
         estimator=model,
         param_grid=param_grid,
-        # scoring=pseudohuber_scorer,  # Use the custom loss function
         cv=10,
         n_jobs=-1
     )
@@ -243,8 +262,8 @@ def print_metrics(model, X_test, y_test):
     print("R2:  ", r2_score(y_test, y_pred))
 
     # Inverse-transform predictions and ground truth
-    y_test_inv = 10 ** y_test
-    y_pred_inv = 10 ** y_pred
+    y_test_inv = maybe_unlog(y_test)
+    y_pred_inv = maybe_unlog(y_pred)
 
     # Metrics in original solubility space
     print("\nOriginal-space metrics:")
@@ -385,7 +404,8 @@ def main():
 
     dfs = select_features(df)
 
-    build_model(dfs)
+    model = build_model(dfs)
+    model.save_model('model_iupac.xgb')
 
 
 

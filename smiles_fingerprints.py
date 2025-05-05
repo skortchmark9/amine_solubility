@@ -1,6 +1,12 @@
 import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import rdFingerprintGenerator
+from rdkit.Chem import Descriptors, Crippen, Lipinski, rdMolDescriptors
+from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors, Draw
+from rdkit.Chem.Draw import MolsToGridImage
+from IPython.display import display
+
 
 # Create a Morgan fingerprint generator with desired parameters
 
@@ -104,3 +110,120 @@ def visualize_fp_bit2(smiles: str, bit: int, radius: int = 2, nBits: int = 2048)
     atom_idx, rad = bitInfo[bit][0]
 
     return Draw.DrawMorganBit(mol, bit, (atom_idx, rad), useSVG=False)
+
+
+def compute_complexity(mol):
+    return Descriptors.BertzCT(mol)
+
+
+
+def compute_rdkit_features(smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return None  # Invalid SMILES
+
+    num_rings = Descriptors.RingCount(mol)
+    try:
+        features = {
+            'molecular_weight_gpm': Descriptors.MolWt(mol),
+            'logP': Crippen.MolLogP(mol),  # Not XLogP3-AA, but standard logP from RDKit
+            'hydrogen_bond_donor_count': Lipinski.NumHDonors(mol),
+            'hydrogen_bond_acceptor_count': Lipinski.NumHAcceptors(mol),
+            'rotatable_bond_count': Lipinski.NumRotatableBonds(mol),
+            'topological_polar_surface_area_angstroms': rdMolDescriptors.CalcTPSA(mol),
+            'complexity': compute_complexity(mol),
+            'undefined_atom_stereocenter_count': len([
+                center for center in Chem.FindMolChiralCenters(mol, includeUnassigned=True)
+                if center[1] == '?'
+            ]),
+            'num_rings':   num_rings,
+            'fsp3':        Descriptors.FractionCSP3(mol),
+            'aromatic_prop': Descriptors.NumAromaticRings(mol) / num_rings if num_rings > 0 else 0.0,
+        }
+        return features
+    except Exception as e:
+        print(f"Error processing SMILES {smiles}: {e}")
+        return None
+
+
+from rdkit import Chem
+from rdkit.Chem import rdMolDescriptors
+
+def extract_substructures_for_bit(smiles, bit_id, radius=2, n_bits=2048):
+    # 1) Parse molecule
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError("Invalid SMILES")
+
+    # 2) Compute fingerprint + bit‐info
+    bitInfo = {}
+    fp = rdMolDescriptors.GetMorganFingerprintAsBitVect(
+        mol,
+        radius,
+        nBits=n_bits,
+        bitInfo=bitInfo
+    )
+    # bitInfo: {bit_id: [(atom_idx, radius), ...], ...}
+
+    if bit_id not in bitInfo:
+        return []  # this bit never fires for this mol
+
+    substructures = []
+    for atom_idx, rad in bitInfo[bit_id]:
+        # 3) Get the atom environment
+        env = Chem.FindAtomEnvironmentOfRadiusN(mol, rad, atom_idx)
+        amap = {}
+        submol = Chem.PathToSubmol(mol, env, atomMap=amap)
+
+        # 4) Highlight the central atom
+        #    so you can see which neighborhood you're looking at:
+        highlight = [amap[atom_idx]]
+
+        # 5) Turn it into a SMARTS (or SMILES)
+        smarts = Chem.MolToSmarts(submol, rootedAtAtom=highlight[0])
+        smi    = Chem.MolToSmiles(submol, rootedAtAtom=highlight[0])
+
+        substructures.append({
+            'atom_index': atom_idx,
+            'radius': rad,
+            'smarts': smarts,
+            'smiles': smi
+        })
+
+    return substructures
+
+def draw_fingerprint_bit(smiles, bit_id, radius=2, n_bits=2048):
+    """
+    For the given SMILES and Morgan fingerprint bit index,
+    returns a list of PIL images where each image highlights
+    one atom‐environment that contributed to that bit.
+    """
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Invalid SMILES: {smiles!r}")
+    # Compute ECFP fingerprint, capturing bitInfo
+    bitInfo = {}
+    _ = rdMolDescriptors.GetMorganFingerprintAsBitVect(
+        mol, radius, nBits=n_bits, bitInfo=bitInfo
+    )
+    if bit_id not in bitInfo:
+        raise ValueError(f"Bit {bit_id} didn’t fire for this molecule.")
+    
+    images = []
+    for atom_idx, rad in bitInfo[bit_id]:
+        # find all bonds in the radius‐N environment
+        env_bonds = list(Chem.FindAtomEnvironmentOfRadiusN(mol, rad, atom_idx))
+        # collect all atoms in that environment
+        atom_set = {atom_idx}
+        for bidx in env_bonds:
+            bond = mol.GetBondWithIdx(bidx)
+            atom_set.update([bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()])
+        # draw with highlights
+        img = Draw.MolToImage(
+            mol,
+            highlightAtoms=list(atom_set),
+            highlightBonds=env_bonds,
+            size=(300, 300)
+        )
+        images.append((rad, img))
+    return images

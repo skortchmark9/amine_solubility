@@ -88,6 +88,13 @@ selected_features_one_compound = [
                #  Currently only works for ms model.
 ]
 
+selected_features_only_smiles = [
+    'T (K)',
+    'aiw',  # field i added to maybe help with bimodality.
+#    'smiles',  # file i added to add more structural features.
+               #  Currently only works for ms model.
+]
+
 target = ['x']
 
 SELECTED_FEATURES = selected_features_one_compound
@@ -151,12 +158,13 @@ def select_features(df):
     # Keep only amines in water experiments
     # df = df[df['Solubility of:'] == 'Water']
 
-    print("Data size:", df.shape)
 
     df = df[SELECTED_FEATURES + target].dropna()
+    print("Data size:", df.shape)
+    print("Columns", df.columns)
 
 
-    get_fingerprint = create_morgan_generator(2, 100)
+    get_fingerprint = create_morgan_generator(2, 2048)
     if 'smiles' in SELECTED_FEATURES:
         fps = df['smiles'].apply(get_fingerprint)
         fps_df = pd.DataFrame(fps.apply(pd.Series).fillna(0))  # Convert sparse to fixed matrix
@@ -329,18 +337,27 @@ def plot_feature_importance(model):
         plt.tight_layout()
         plt.show()
 
-
 def print_metrics(model, X_test, y_test):
     y_pred = model.predict(X_test)
-    mse = mean_squared_error(y_test, y_pred)
-    rmse = root_mean_squared_error(y_test, y_pred)
-    mae = mean_absolute_error(y_test, y_pred)
-    r2 = r2_score(y_test, y_pred)
 
-    print(f"MSE: {mse: .4f}")
-    print(f"RMSE: {rmse:.4f}")
-    print(f"MAE: {mae:.4f}")
-    print(f"R2: {r2:.4f}")
+    # Metrics in log space
+    print("Log-space metrics:")
+    print(f"MSE: {mean_squared_error(y_test, y_pred): .4f}")
+    print(f"RMSE: {root_mean_squared_error(y_test, y_pred):.4f}")
+    print(f"MAE: {mean_absolute_error(y_test, y_pred):.4f}")
+    print(f"R2: {r2_score(y_test, y_pred):.4f}")
+
+    # Metrics in original space
+    y_pred_inv = maybe_unlog(y_pred)
+    y_test_inv = maybe_unlog(y_test)
+
+    print("\nOriginal-space metrics:")
+    print(f"MSE: {mean_squared_error(y_test_inv, y_pred_inv): .4f}")
+    print(f"RMSE: {root_mean_squared_error(y_test_inv, y_pred_inv):.4f}")
+    print(f"MAE: {mean_absolute_error(y_test_inv, y_pred_inv):.4f}")
+    print(f"R2: {r2_score(y_test_inv, y_pred_inv):.4f}")
+
+
 
 def build_model(data):
     X = data.drop(columns=['x'])
@@ -500,6 +517,9 @@ def main():
     elif config['features'] == 'ms-smiles':
         df = load_mutual_solubility_data()
         SELECTED_FEATURES = selected_features_one_compound + ['smiles']
+    elif config['features'] == 'ms-only-smiles':
+        df = load_mutual_solubility_data()
+        SELECTED_FEATURES = selected_features_only_smiles + ['smiles']
     else:
         df = load_data()
         # For all rows with 'Solubility of: = water', replace 'x' with 1 - 'x'
@@ -518,7 +538,8 @@ def main():
         test_per_amine(df)
         return
 
-    build_model(select_features(df))
+    model = build_model(select_features(df))
+    model.save_model('model.json')
 
 
 
