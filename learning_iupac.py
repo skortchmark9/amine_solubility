@@ -1,3 +1,4 @@
+import time
 import json
 import random
 import numpy as np
@@ -16,6 +17,8 @@ from sklearn.metrics import (
 )
 import shap
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+
 
 from config import config
 from iupac_scraper import parse_all, prepare_data_for_learning
@@ -49,16 +52,26 @@ def normalize_features(df):
     """Normalize features using min-max scaling"""
     if df.empty:
         return df
+    
+    exclude_cols = ['aiw']
     df = df.copy()
     for col in df.columns:
         if col == 'T':
             df[col] = normalize_temperature(df[col])
+            exclude_cols.append(col)
             continue
         if col == 'x':
+            exclude_cols.append(col)
             continue
+
+    scaler = MinMaxScaler()
+    cols_to_scale = [col for col in df.columns if col not in exclude_cols and not col.startswith('FP_')]
+    if cols_to_scale:
+        df[cols_to_scale] = scaler.fit_transform(df[cols_to_scale])
+
     return df
 
-def select_features(df):
+def select_features(df, top_N=10):
     print("Selecting features...")
     # Keep only amines in water experiments
     # df = df[df['Solubility of:'] == 'Water']
@@ -73,6 +86,7 @@ def select_features(df):
         fps = df['smiles'].apply(get_fingerprint)
         fps_df = pd.DataFrame(fps.apply(pd.Series).fillna(0))  # Convert sparse to fixed matrix
         fps_df.columns = [f"FP_{i}" for i in range(len(fps_df.columns))]
+
         df = pd.concat([df, fps_df], axis=1)
 
     if 'smiles' in SELECTED_FEATURES:
@@ -82,6 +96,11 @@ def select_features(df):
         df = pd.concat([df, smiles_features_df], axis=1)
 
     df = df.drop(columns=['smiles'])
+
+    top_features = pd.read_csv('top_features.csv')
+    top_features = top_features['feature'].tolist()[:top_N]
+    df = df[df.columns.intersection(top_features + target)]
+
     print("Data size:", df.shape)
     print("Columns", df.columns)
 
@@ -128,10 +147,10 @@ def train_model_optimized(X_train, y_train):
     xgb_param_grid = {
         "random_state": [42],
         'learning_rate': [0.001, 0.01, 0.1],
-        'n_estimators': [200, 300, 400],
-        'max_depth': [3, 4, 5],
-        'subsample': [0.7, 0.8, 0.9],
-        'colsample_bytree': [0.6, 0.7, 0.8],
+        'n_estimators': [300, 400],
+        'max_depth': [4, 5],
+        'subsample': [0.8, 0.9],
+        'colsample_bytree': [0.7, 0.8],
         # 'objective': ['reg:pseudohubererror'],
     }
 
@@ -153,15 +172,15 @@ def train_model_optimized(X_train, y_train):
         param_grid = xgb_param_grid
         model = xgb.XGBRegressor(**param_grid)
 
-    grid_search = RandomizedSearchCV(
-        estimator=model,
-        param_distributions=param_grid,
-        n_iter=25,  # number of random combinations to try
-        scoring='neg_root_mean_squared_error',
-        cv=5,
-        n_jobs=-1,
-        random_state=42,
-    )
+    # grid_search = RandomizedSearchCV(
+    #     estimator=model,
+    #     param_distributions=param_grid,
+    #     n_iter=25,  # number of random combinations to try
+    #     scoring='neg_root_mean_squared_error',
+    #     cv=5,
+    #     n_jobs=-1,
+    #     random_state=42,
+    # )
 
     grid_search = GridSearchCV(
         estimator=model,
@@ -251,15 +270,21 @@ def plot_feature_importance(model):
         plt.show()
 
 
-def print_metrics(model, X_test, y_test):
+def calc_metrics(model, X_test, y_test):
     y_pred = model.predict(X_test)
+
+    metrics = {}
 
     # Metrics in log10 space
     print("Log-space metrics:")
     print("MSE: ", mean_squared_error(y_test, y_pred))
+    metrics['log_mse'] = mean_squared_error(y_test, y_pred)
     print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred)))
+    metrics['log_rmse'] = np.sqrt(mean_squared_error(y_test, y_pred))
     print("MAE: ", mean_absolute_error(y_test, y_pred))
+    metrics['log_mae'] = mean_absolute_error(y_test, y_pred)
     print("R2:  ", r2_score(y_test, y_pred))
+    metrics['log_r2'] = r2_score(y_test, y_pred)
 
     # Inverse-transform predictions and ground truth
     y_test_inv = maybe_unlog(y_test)
@@ -268,17 +293,23 @@ def print_metrics(model, X_test, y_test):
     # Metrics in original solubility space
     print("\nOriginal-space metrics:")
     print("MSE: ", mean_squared_error(y_test_inv, y_pred_inv))
+    metrics['orig_mse'] = mean_squared_error(y_test_inv, y_pred_inv)
     print("RMSE:", np.sqrt(mean_squared_error(y_test_inv, y_pred_inv)))
+    metrics['orig_rmse'] = np.sqrt(mean_squared_error(y_test_inv, y_pred_inv))
     print("MAE: ", mean_absolute_error(y_test_inv, y_pred_inv))
+    metrics['orig_mae'] = mean_absolute_error(y_test_inv, y_pred_inv)
     print("R2:  ", r2_score(y_test_inv, y_pred_inv))
+    metrics['orig_r2'] = r2_score(y_test_inv, y_pred_inv)
+
+    return metrics
 
 
-def build_model(data):
+def build_model(data, random_state=42):
     X = data.drop(columns=['x'])
     y = data['x']
 
     # Split into training and test sets
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=random_state)
 
     if config['optimize']:
         model = train_model_optimized(X_train, y_train)
@@ -291,13 +322,14 @@ def build_model(data):
     elif config['model'] == 'catboost':
         model.feature_names = feature_names
     
-    print_metrics(model, X_test, y_test)
+    rmse = calc_metrics(model, X_test, y_test)
     if config['graphs']:
         shap_analysis(model, X_test)
         plot_all_predictions(model, X_test, y_test)
         plot_parity(model, X_test, y_test)
         plot_feature_importance(model)
-    return model
+
+    return model, rmse
 
 def shap_analysis(model, X_test):
     explainer = shap.TreeExplainer(model)
@@ -323,7 +355,7 @@ def predict_some(df, names=None):
 
     name_not_matches = df[~cond]
     df_train = select_features(name_not_matches)
-    model = build_model(df_train)
+    model, rmse = build_model(df_train)
 
     df_test_by_name = {}
     for name in names:
@@ -342,14 +374,17 @@ def predict_some(df, names=None):
         yield model, name, df_test
 
 def maybe_unlog(x):
-    if not config['log_scale']:
+    if config['logscale'] != 'yes':
         return x
     out = np.exp(x) - 1e-6
     return out
 
 def maybe_log(x):
-    if not config['log_scale']:
+    if config['logscale'] != 'yes':
+        print('not log scaling')
         return x
+    
+    print('log scaling')
     # Take the natural log of x + epsilon to avoid ln(0)
     return np.log(x + 1e-6)
 
@@ -392,22 +427,95 @@ def plot_prediction(model, name, df):
     fig.show()
 
 
-def main():
-    global SELECTED_FEATURES
-    print(config)
+def get_importances(model, X):
+    booster = model.get_booster()
+    
+    # 2) XGBoost split‑count importances
+    imp_dict = booster.get_score(importance_type='weight')
+    fi_df = pd.DataFrame(list(imp_dict.items()), columns=['feature','importance'])
+    fi_df = fi_df.sort_values('importance', ascending=False).reset_index(drop=True)
+    
+    # 3) SHAP importances
+    explainer = shap.TreeExplainer(model)
+    shap_vals = explainer.shap_values(X)
+    mean_abs_shap = np.abs(shap_vals).mean(axis=0)
+    shap_df = pd.DataFrame({
+        'feature': X.columns,
+        'mean_abs_shap': mean_abs_shap
+    })
+    shap_df = shap_df.sort_values('mean_abs_shap', ascending=False).reset_index(drop=True)
+    
+    return fi_df, shap_df
 
+def load_model(path='model_iupac.json'):
+    model = xgb.XGBRegressor()
+    model.load_model(path)
+    return model
+
+def load_data():
     df = parse_all()
     df = prepare_data_for_learning(df)
 
     df['x'] = maybe_log(df['x'])
     df = normalize_features(df)
 
-    dfs = select_features(df)
+    dfs = select_features(df, top_N = 200)
+    return dfs
 
-    model = build_model(dfs)
-    model.save_model('model_iupac.xgb')
+def find_N():
+    df = parse_all()
+    df = prepare_data_for_learning(df)
+    df['x'] = maybe_log(df['x'])
+    df = normalize_features(df)
+
+    results = []
+    for i in range(10, 1000, 10):
+        dfs = select_features(df, top_N=i)
+        start = time.time()
+        n_metrics = [build_model(dfs.copy(), random.randint(0, 100))[1] for _ in range(5)]
+        log_rmse = np.mean([m['log_rmse'] for m in n_metrics])
+        end = time.time()
+        elapsed = (end - start) / 5
+
+        results.append({
+            'N_bits': i,
+            'rmse': log_rmse,
+            'train_time_s': elapsed
+        })
+
+    perf = pd.DataFrame(results)
+
+    # 4) Plot RMSE vs N and Training Time vs N
+    fig, ax1 = plt.subplots(figsize=(8, 5))
+    ax1.plot(perf['N_bits'], perf['rmse'], marker='o', label='Test RMSE')
+    ax1.set_xlabel('Number of fingerprint bits (N)')
+    ax1.set_ylabel('Log‑space RMSE')
+    ax1.grid(True)
+
+    ax2 = ax1.twinx()
+    ax2.plot(perf['N_bits'], perf['train_time_s'], marker='s', color='gray', label='Training Time (s)')
+    ax2.set_ylabel('Training time (s)')
+
+    # Combine legends
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='best')
+
+    plt.title('RMSE and Training Time vs Number of FP bits')
+    plt.tight_layout()
+    plt.show()    
+
+
+def main():
+    global SELECTED_FEATURES
+    print(config)
+    dfs = load_data()
+    model, metrics = build_model(dfs)
+    model.save_model('model_iupac.json')
+    return model, dfs
 
 
 
 if __name__ == "__main__":
     main()
+
