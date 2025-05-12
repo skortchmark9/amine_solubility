@@ -18,13 +18,13 @@ from sklearn.metrics import (
 import shap
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-
+from sklearn.metrics import r2_score
 
 from config import config
 from iupac_scraper import parse_all, prepare_data_for_learning
 import plotly
 import plotly.graph_objs as go
-
+from sklearn.base import BaseEstimator, RegressorMixin
 
 import matplotlib.pyplot as plt
 from smiles_fingerprints import create_morgan_generator
@@ -37,6 +37,66 @@ selected_features = [
 target = ['x']
 
 SELECTED_FEATURES = selected_features
+
+
+class DualSolubilityModel(BaseEstimator, RegressorMixin):
+    def __init__(self):
+        self.base_model_fn = xgb.XGBRegressor
+        self.model_aiw = None
+        self.model_wia = None
+        self.kwargs = {}
+
+
+    def fit(self, X, y):
+        mask_aiw = X['aiw'] == 1
+        mask_wia = X['aiw'] == 0
+
+        self.model_aiw = self.base_model_fn(**self.kwargs)
+        self.model_wia = self.base_model_fn(**self.kwargs)
+
+        self.model_aiw.fit(X[mask_aiw], y[mask_aiw])
+        self.model_wia.fit(X[mask_wia], y[mask_wia])
+        return self
+    
+    def set_params(self, **params):
+        self.kwargs.update(params)
+        return self
+
+    def get_params(self, deep=True):
+        return self.kwargs.copy()
+
+    def predict(self, X):
+        mask_aiw = X['aiw'] == 1
+        mask_wia = X['aiw'] == 0
+
+        preds = pd.Series(index=X.index, dtype=np.float64)
+        if mask_aiw.any():
+            preds[mask_aiw] = self.model_aiw.predict(X[mask_aiw])
+        if mask_wia.any():
+            preds[mask_wia] = self.model_wia.predict(X[mask_wia])
+        return preds
+
+    def score(self, X, y):
+        return r2_score(y, self.predict(X))
+
+    def get_models(self):
+        return self.model_aiw, self.model_wia
+    
+    def save_model(self, path):
+        path = path.replace('.json', '')
+        self.model_aiw.save_model(path + '_aiw.json')
+        self.model_wia.save_model(path + '_wia.json')
+
+    @classmethod
+    def load_model(cls, path):
+        path = path.replace('.json', '')
+        model = cls()
+        model.model_aiw = xgb.XGBRegressor()
+        model.model_aiw.load_model(path + '_aiw.json')
+        model.model_wia = xgb.XGBRegressor()
+        model.model_wia.load_model(path + '_wia.json')
+        return model
+
 
 def normalize_temperature(col):
     min = 270.15
@@ -130,6 +190,16 @@ def train_model_simple(X_train, y_train):
         'random_state': 42,
         'rsm': 0.9,
     }
+
+    # 5/12
+    dual_hyperparameters = {
+        'colsample_bytree': 0.7,
+        'learning_rate': 0.1,
+        'max_depth': 5,
+        'n_estimators': 300,
+        'random_state': 42,
+        'subsample': 0.8,        
+    }
     if config['model'] == 'catboost':
         print('using catboost')
         model = CatBoostRegressor(verbose=False, **catboost_hyperparameters)
@@ -138,6 +208,10 @@ def train_model_simple(X_train, y_train):
         model = xgb.XGBRegressor(
             **xgb_optimized_hyperparameters
         )
+    elif config['model'] == 'dual':
+        print('using dual solubility model')
+        model = DualSolubilityModel()
+        model.set_params(**dual_hyperparameters)
     
     model.fit(X_train, y_train)
     return model
@@ -173,6 +247,10 @@ def train_model_optimized(X_train, y_train):
         print('Using xgboost...')
         param_grid = xgb_param_grid
         model = xgb.XGBRegressor(**param_grid)
+    elif config['model'] == 'dual':
+        print('Using dual solubility model...')
+        param_grid = xgb_param_grid
+        model = DualSolubilityModel()
 
     # grid_search = RandomizedSearchCV(
     #     estimator=model,
@@ -187,6 +265,7 @@ def train_model_optimized(X_train, y_train):
     grid_search = GridSearchCV(
         estimator=model,
         param_grid=param_grid,
+        error_score='raise',
         cv=10,
         n_jobs=-1
     )
@@ -327,10 +406,24 @@ def build_model(data, random_state=42):
     
     rmse = calc_metrics(model, X_test, y_test)
     if config['graphs']:
-        shap_analysis(model, X_test)
-        plot_all_predictions(model, X_test, y_test)
-        plot_parity(model, X_test, y_test)
-        plot_feature_importance(model)
+        if config['model'] == 'dual':
+            model_aiw, model_wia = model.get_models()
+            print('AIW model')
+            shap_analysis(model_aiw, X_test[X_test['aiw'] == 1])
+            plot_all_predictions(model_aiw, X_test[X_test['aiw'] == 1], y_test[X_test['aiw'] == 1])
+            plot_parity(model_aiw, X_test[X_test['aiw'] == 1], y_test[X_test['aiw'] == 1])
+            plot_feature_importance(model_aiw)
+
+            print('WIA model')
+            shap_analysis(model_wia, X_test[X_test['aiw'] == 0])
+            plot_all_predictions(model_wia, X_test[X_test['aiw'] == 0], y_test[X_test['aiw'] == 0])
+            plot_parity(model_wia, X_test[X_test['aiw'] == 0], y_test[X_test['aiw'] == 0])
+            plot_feature_importance(model_wia)
+        else:
+            shap_analysis(model, X_test)
+            plot_all_predictions(model, X_test, y_test)
+            plot_parity(model, X_test, y_test)
+            plot_feature_importance(model)
 
     return model, rmse
 

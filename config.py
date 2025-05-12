@@ -9,7 +9,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="XGBoost Model Training")
 
     # General parameters
-    parser.add_argument("--model", choices=["xgboost", "catboost"], default="xgboost", help="Model to use")
+    parser.add_argument("--model", choices=["xgboost", "catboost", 'dual'], default="xgboost", help="Model to use")
     parser.add_argument("--features", choices=["ms", "ms-smiles", "ms-only-smiles", "dual"], default="dual", help="Feature set")
     parser.add_argument("--logscale", choices=["yes", "no"], default="yes", help="Model to use")
     parser.add_argument("--predict", action="store_true", help="Show plots")
@@ -19,7 +19,6 @@ def parse_args():
 
     args = parser.parse_args()
     config.update(vars(args))  # Store parsed arguments in config dict
-    config['log_scale'] = args.logscale == "yes"
 
 
 parse_args()  # Automatically parse when imported

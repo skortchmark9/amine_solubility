@@ -6,7 +6,7 @@ from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors, Draw
 from rdkit.Chem.Draw import MolsToGridImage
 from IPython.display import display
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import io
 from rdkit.Chem.AllChem import Compute2DCoords
 from rdkit import Chem
@@ -142,7 +142,6 @@ def draw_fingerprint_bit_combined(smiles, bit_id, radius=2, n_bits=2048):
     rdMolDraw2D.PrepareAndDrawMolecule(
         drawer,
         mol,
-        legend=f"Bit {bit_id} for {name} ({smiles})",  # ← your label here
         highlightAtoms=list(highlight_atoms),
         highlightBonds=list(highlight_bonds),
         highlightAtomColors={i: (0.9, 0.3, 0.3) for i in highlight_atoms},
@@ -150,8 +149,24 @@ def draw_fingerprint_bit_combined(smiles, bit_id, radius=2, n_bits=2048):
     )
     drawer.FinishDrawing()
     png = drawer.GetDrawingText()
-
     img = Image.open(io.BytesIO(png))
+
+    # Define the label
+    legend_text = f"Bit {bit_id} for {name} ({smiles})"
+    font = ImageFont.load_default()
+
+    # Draw the text onto the image
+    draw = ImageDraw.Draw(img)
+
+    # Get text dimensions using textbbox (returns (left, top, right, bottom))
+    bbox = draw.textbbox((0, 0), legend_text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_x = (img.width - text_width) // 2
+    text_y = 70  # adjust to fit within existing top padding
+
+    # Draw the centered text
+    draw.text((text_x, text_y), legend_text, fill="black", font=font)
+
     return img
 
 
