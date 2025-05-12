@@ -104,6 +104,8 @@ def select_features(df, top_N=10):
     print("Data size:", df.shape)
     print("Columns", df.columns)
 
+    df = normalize_features(df)
+
     return df
 
 def train_model_simple(X_train, y_train):    
@@ -276,15 +278,16 @@ def calc_metrics(model, X_test, y_test):
     metrics = {}
 
     # Metrics in log10 space
-    print("Log-space metrics:")
-    print("MSE: ", mean_squared_error(y_test, y_pred))
-    metrics['log_mse'] = mean_squared_error(y_test, y_pred)
-    print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred)))
-    metrics['log_rmse'] = np.sqrt(mean_squared_error(y_test, y_pred))
-    print("MAE: ", mean_absolute_error(y_test, y_pred))
-    metrics['log_mae'] = mean_absolute_error(y_test, y_pred)
-    print("R2:  ", r2_score(y_test, y_pred))
-    metrics['log_r2'] = r2_score(y_test, y_pred)
+    if do_log_transform():
+        print("Log-space metrics:")
+        print("MSE: ", mean_squared_error(y_test, y_pred))
+        metrics['log_mse'] = mean_squared_error(y_test, y_pred)
+        print("RMSE:", np.sqrt(mean_squared_error(y_test, y_pred)))
+        metrics['log_rmse'] = np.sqrt(mean_squared_error(y_test, y_pred))
+        print("MAE: ", mean_absolute_error(y_test, y_pred))
+        metrics['log_mae'] = mean_absolute_error(y_test, y_pred)
+        print("R2:  ", r2_score(y_test, y_pred))
+        metrics['log_r2'] = r2_score(y_test, y_pred)
 
     # Inverse-transform predictions and ground truth
     y_test_inv = maybe_unlog(y_test)
@@ -373,14 +376,18 @@ def predict_some(df, names=None):
     for name, df_test in df_test_by_name.items():
         yield model, name, df_test
 
+
+def do_log_transform():
+    return config['logscale'] == 'yes'
+
 def maybe_unlog(x):
-    if config['logscale'] != 'yes':
+    if not do_log_transform():
         return x
     out = np.exp(x) - 1e-6
     return out
 
 def maybe_log(x):
-    if config['logscale'] != 'yes':
+    if not do_log_transform():
         print('not log scaling')
         return x
     
@@ -457,8 +464,6 @@ def load_data():
     df = prepare_data_for_learning(df)
 
     df['x'] = maybe_log(df['x'])
-    df = normalize_features(df)
-
     dfs = select_features(df, top_N = 200)
     return dfs
 
@@ -466,7 +471,6 @@ def find_N():
     df = parse_all()
     df = prepare_data_for_learning(df)
     df['x'] = maybe_log(df['x'])
-    df = normalize_features(df)
 
     results = []
     for i in range(10, 1000, 10):
