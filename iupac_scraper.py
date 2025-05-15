@@ -3,7 +3,12 @@ import re
 import pdfplumber
 import pandas as pd
 import numpy as np
-from smiles_fingerprints import load_smiles
+from smiles_fingerprints import load_smiles, smiles_to_chno, chno_to_string, CHNO
+from collections import defaultdict
+from plotly.subplots import make_subplots
+import plotly.graph_objs as go
+import plotly.colors as pc
+
 
 sources = [
     "papers/c4-c6 amines.pdf",
@@ -511,3 +516,76 @@ def compare_to_human(scraper):
     scraper_compounds = set([clean(c) for c in scraper_compounds if type(c) == str])
     print("Human compounds:", len(human_compounds))
     print("Scraper compounds:", len(scraper_compounds))
+
+def plot_pdf_mutual_solubility(df):
+    df = df.copy()
+    df['chno'] = df['smiles'].apply(smiles_to_chno)
+
+    # Group by solute (amine) and solvent
+    mutual_sol = defaultdict(lambda: {'x': [], 'T': [], 'ref': [], 'smiles': None, 'name': None, 'chno': None})
+    for _, row in df.iterrows():
+        solute, solvent = row['Solubility of:'], row['In:']
+        smiles = row['smiles']
+        x, T = row['x'], row['T']
+        ref = row.get('Reference', None)
+        chno = smiles_to_chno(smiles)
+
+        if solute.lower() != 'water':
+            key = (solute, solvent)
+            mutual_sol[key]['name'] = solute
+        else:
+            key = (solvent, solute)
+            mutual_sol[key]['name'] = solvent
+
+        mutual_sol[key]['x'].append(x)
+        mutual_sol[key]['T'].append(T)
+        mutual_sol[key]['ref'].append(ref)
+        mutual_sol[key]['smiles'] = smiles
+        mutual_sol[key]['chno'] = chno
+
+    # Group isomers
+    isomer_groups = defaultdict(list)
+    for val in mutual_sol.values():
+        isomer_groups[val['chno']].append(val['smiles'])
+
+    # Assign colors
+    colorscale = list(reversed(pc.sequential.Turbo))
+    colors = {}
+    idx = 0
+    for chno, smiles_list in isomer_groups.items():
+        for s in smiles_list:
+            if s not in colors:
+                colors[s] = colorscale[idx % len(colorscale)]
+                idx += 1
+
+    # Build plot
+    fig = go.Figure()
+    for (name, _), val in mutual_sol.items():
+        smiles = val['smiles']
+        chno = val['chno']
+        color = colors[smiles]
+        hover = [
+            f"{name}<br>x = {x:.3f}<br>T = {T:.1f} K<br>Ref: {r if r else 'N/A'}"
+            for x, T, r in zip(val['x'], val['T'], val['ref'])
+        ]
+        fig.add_trace(go.Scatter(
+            x=val['x'],
+            y=val['T'],
+            mode='markers',
+            name=name,
+            legendgroup=chno_to_string(chno),
+            legendgrouptitle=dict(text=chno_to_string(chno)),
+            marker=dict(size=10, color=color),
+            hoverinfo='text',
+            text=hover,
+            visible=True if chno == CHNO(4, 11, 1, 0) else 'legendonly'
+        ))
+
+    fig.update_xaxes(title_text="Mole fraction amine", range=[0, 1])
+    fig.update_yaxes(title_text="Temperature (K)")
+    fig.update_layout(
+        legend=dict(entrywidth=70, entrywidthmode="pixels", groupclick='toggleitem'),
+        title="Mutual Solubility — PDF Dataset",
+        height=700
+    )
+    fig.show()

@@ -1,5 +1,7 @@
+import re
 import pandas as pd
 from rdkit import Chem
+from rdkit.Chem.rdMolDescriptors import CalcMolFormula
 from rdkit.Chem import rdFingerprintGenerator
 from rdkit.Chem import Descriptors, Crippen, Lipinski, rdMolDescriptors
 from rdkit import Chem
@@ -13,6 +15,8 @@ from rdkit import Chem
 from rdkit.Chem import AllChem, Draw
 from rdkit.Chem.Draw import rdMolDraw2D
 from IPython.display import SVG
+from rdkit import Chem
+from collections import namedtuple, Counter
 
 
 # Create a Morgan fingerprint generator with desired parameters
@@ -183,3 +187,24 @@ def find_molecule_with_bit_on(bit_id=981, radius=2, n_bits=2048):
             return smiles, bitInfo
     print(f"No molecule found with bit {bit_id}")
     return None, None
+
+
+CHNO = namedtuple('CHNO', ['C', 'H', 'N', 'O'])
+
+def smiles_to_chno(smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        return CHNO(0, 0, 0, 0)
+
+    formula = CalcMolFormula(mol)  # e.g., 'C6H15N'
+    print(formula)
+    counts = Counter()
+    tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
+    for elem, count in tokens:
+        count = int(count) if count else 1
+        counts[elem] += count
+
+    return CHNO(counts.get('C', 0), counts.get('H', 0), counts.get('N', 0), counts.get('O', 0))
+
+def chno_to_string(chno):
+    return ''.join(f"{atom}{n if n > 1 else ''}" for atom, n in zip("CHNO", chno) if n > 0)
