@@ -522,7 +522,7 @@ def plot_pdf_mutual_solubility(df):
     df['chno'] = df['smiles'].apply(smiles_to_chno)
 
     # Group by solute (amine) and solvent
-    mutual_sol = defaultdict(lambda: {'x': [], 'T': [], 'ref': [], 'smiles': None, 'name': None, 'chno': None})
+    mutual_sol = defaultdict(lambda: {'x': [], 'T': [], 'ref': [], 'aiw': [], 'smiles': None, 'name': None, 'chno': None})
     for _, row in df.iterrows():
         solute, solvent = row['Solubility of:'], row['In:']
         smiles = row['smiles']
@@ -542,27 +542,43 @@ def plot_pdf_mutual_solubility(df):
         mutual_sol[key]['ref'].append(ref)
         mutual_sol[key]['smiles'] = smiles
         mutual_sol[key]['chno'] = chno
+        mutual_sol[key]['aiw'].append(row['aiw'])
 
     # Group isomers
     isomer_groups = defaultdict(list)
     for val in mutual_sol.values():
         isomer_groups[val['chno']].append(val['smiles'])
+    
+    custom_colors = [
+        "#e6194b", "#3cb44b", "#ffe119", "#4363d8",
+        "#f58231", "#911eb4", "#46f0f0", "#f032e6",
+        "#bcf60c", "#fabebe", "#008080", "#e6beff"
+    ]
 
     # Assign colors
-    colorscale = list(reversed(pc.sequential.Turbo))
     colors = {}
     idx = 0
     for chno, smiles_list in isomer_groups.items():
         for s in smiles_list:
             if s not in colors:
-                colors[s] = colorscale[idx % len(colorscale)]
+                colors[s] = custom_colors[idx % len(custom_colors)]
                 idx += 1
+
+    ref_values = df['Reference'].fillna('None').unique()
+    shape_list = ['square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down',
+                  'triangle-left', 'triangle-right', 'star', 'hexagram']
+    ref_to_shape = {ref: shape_list[i % len(shape_list)] for i, ref in enumerate(ref_values)}
+    ref_to_shape['None'] = 'circle'
+
+
 
     # Build plot
     fig = go.Figure()
     for (name, _), val in mutual_sol.items():
         smiles = val['smiles']
         chno = val['chno']
+        references = val['ref']
+        aiws = val['aiw']
         color = colors[smiles]
         hover = [
             f"{name}<br>x = {x:.3f}<br>T = {T:.1f} K<br>Ref: {r if r else 'N/A'}"
@@ -575,7 +591,10 @@ def plot_pdf_mutual_solubility(df):
             name=name,
             legendgroup=chno_to_string(chno),
             legendgrouptitle=dict(text=chno_to_string(chno)),
-            marker=dict(size=10, color=color),
+            marker=dict(size=10, color=color,
+                symbol=[ref_to_shape.get(r or 'None', 'circle') for r in references],
+                line=dict(width=[1 if aiw else 0 for aiw in aiws], color='black')
+            ),
             hoverinfo='text',
             text=hover,
             visible=True if chno == CHNO(4, 11, 1, 0) else 'legendonly'
@@ -585,7 +604,17 @@ def plot_pdf_mutual_solubility(df):
     fig.update_yaxes(title_text="Temperature (K)")
     fig.update_layout(
         legend=dict(entrywidth=70, entrywidthmode="pixels", groupclick='toggleitem'),
-        title="Mutual Solubility — PDF Dataset",
+        title="Mutual Solubility — Scraped from IUPAC",
+        annotations=[
+            dict(
+                text="Circle = raw data<br>Shape = reference<br>Black outline = amine in water (AIW)",
+                showarrow=False,
+                xref="paper", yref="paper",
+                x=0, y=1.1,  # top left above plot
+                align="left"
+            )
+        ],
         height=700
     )
+
     fig.show()

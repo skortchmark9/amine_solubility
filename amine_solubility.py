@@ -606,6 +606,7 @@ def plot_mutual_solubility():
         ),
     )
 
+
     fig.show()
 
 

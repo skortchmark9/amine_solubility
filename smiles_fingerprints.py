@@ -60,10 +60,13 @@ def count_unique_indexes(df):
 def load_smiles():
     """Simplified Molecular Input Line Entry System (SMILES)
     codes for each compound."""
-    df = pd.read_csv('data/amine_smiles.csv')
+    df = pd.read_csv('data/amine_smiles_pubchem.csv')
     smiles_map = {}
     for i, row in df.iterrows():
-        smiles_map[row['Compound Name']] = row['SMILES Code']
+        code = row['Smiles (PubChem)']
+        if code == 'NOT FOUND':
+            code = row['SMILES Code']
+        smiles_map[row['Compound Name']] = code
     return smiles_map
 
 
@@ -197,7 +200,6 @@ def smiles_to_chno(smiles):
         return CHNO(0, 0, 0, 0)
 
     formula = CalcMolFormula(mol)  # e.g., 'C6H15N'
-    print(formula)
     counts = Counter()
     tokens = re.findall(r'([A-Z][a-z]*)(\d*)', formula)
     for elem, count in tokens:
